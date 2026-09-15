@@ -1,16 +1,28 @@
-# v0 sandbox internal files
-__v0_runtime_loader.js
-__v0_devtools.tsx
-__v0_jsx-dev-runtime.ts
-.snowflake/
-.v0-trash/
-.vercel/
-
-# Environment variables
-.env*.local
-
-# Common ignores
+# Dependencies
 node_modules
-.next/
+
+# Build output
+dist
 *.tsbuildinfo
+
+# Environment
+# .env holds only VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY (public by
+# design, but still not committed). .env.seed holds the service-role key and
+# must never be committed under any circumstance.
+.env
+.env.*
+!.env.example
+
+# Supabase CLI local state
+supabase/.temp
+supabase/.branches
+
+# Quarantined Next.js implementation. Recoverable from the `pre-rebuild` tag;
+# deleted outright at the end of Phase 8.
+_legacy/
+
+# Editor / OS
 .DS_Store
+.vscode/*
+!.vscode/extensions.json
+.idea
