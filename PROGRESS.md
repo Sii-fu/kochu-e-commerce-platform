@@ -29,29 +29,35 @@ npm run db:verify       # the whole gate: 13 + 10 + 21 checks
 
 `db:verify` ends in `PHASE 1 GATE: GREEN` or a non-zero exit.
 
-### Still needed from you — the hosted project
+### Still needed from you — pushing to the hosted project
 
-Local proves the schema. It does not give you a real environment, so this is
-the one remaining Phase 1 item, and it is the gate on **Phase 8**, not on
-Phases 2–7 — the frontend can be built entirely against local.
+The project now exists: ref **`tyrubexqizwtxmdtopro`**. Its URL and publishable
+key are in `.env`, commented out, so the app can be pointed at it by swapping
+two lines. Nothing has been pushed to it yet.
 
-- Create the project, region **ap-southeast-1 (Singapore)** — closest to Dhaka,
-  ~40ms vs ~250ms for us-east. Free tier is fine.
-- Save the database password when it is shown. **It is shown exactly once.**
-
-Then either paste the **Project ref**, **Project URL** and **anon key** here
-(all three are public by design — the anon key ships in the JS bundle), or set
-them up yourself:
+Linking needs a browser login and the database password, so it has to be you:
 
 ```bash
 npx supabase login
-npx supabase link --project-ref <REF>
-npm run db:push && npm run db:types && npm run db:seed
+npx supabase link --project-ref tyrubexqizwtxmdtopro
+npm run db:push        # applies 0001-0009 to the hosted project
+npm run db:types
+npm run db:seed        # needs .env.seed
 ```
 
-The **service_role key** bypasses RLS entirely. It belongs only in `.env.seed`
-(gitignored) and is used only by the seed script. Don't paste it here — create
-the file yourself from `.env.example`. I never need to see it.
+Then run `supabase/tests/verify_phase1.sql` once in the hosted SQL editor, and
+promote yourself:
+
+```sql
+update profiles set role = 'admin' where email = 'you@example.com';
+```
+
+The **secret key** (`sb_secret_…`, formerly service_role) bypasses RLS
+entirely. It belongs only in `.env.seed` (gitignored) and is used only by the
+seed script. Don't paste it into chat — create the file yourself from
+`.env.example`. I never need to see it.
+
+None of this blocks Phases 3–7, which build fine against local.
 
 ---
 
@@ -307,6 +313,18 @@ password-reset links will bounce.
 13. **`paths` is duplicated into the root `tsconfig.json`.** The shadcn CLI
    reads it directly to resolve `@/…`; without it, `shadcn add` silently writes
    components into a literal `./@/` directory instead of `./src/`.
+14. **The client env var is `VITE_SUPABASE_PUBLISHABLE_KEY`, not
+   `VITE_SUPABASE_ANON_KEY`.** Supabase's dashboard now issues
+   `sb_publishable_…` keys in place of the legacy `anon` JWT. Verified against
+   the local stack: it resolves to the same `anon` Postgres role, so every
+   policy and grant in `0007_rls.sql` applies unchanged and invariant 5 still
+   reads the same — the key is public either way.
+15. **Supabase's prebuilt shadcn "Library blocks" are deliberately not used.**
+   `npx shadcn add @supabase/supabase-client-react-router` would add a second
+   Supabase client alongside the typed one in `src/lib/supabase/client.ts`, on
+   its own env var names, plus auth components that assume a sign-in wall. This
+   project's checkout is guest-first and its admin check is `profiles.role` in
+   the database, so the blocks would have to be unpicked rather than adopted.
 
 ---
 

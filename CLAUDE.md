@@ -42,7 +42,9 @@ supabase gen types typescript --local > src/lib/supabase/types.ts
 node --env-file=.env.seed supabase/seed/seed.ts
 ```
 
-Env: `.env` holds **only** `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY`. The service-role key
+Env: `.env` holds **only** `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`
+(`sb_publishable_…`, Supabase's replacement for the legacy `anon` JWT — it resolves to the same
+`anon` Postgres role, so every policy written against `anon` applies unchanged). The secret key
 lives in a gitignored `.env.seed` and is used solely by the seed script. It must never appear in
 `src/`, in a `VITE_`-prefixed variable, or in any committed file.
 
@@ -62,7 +64,8 @@ These are the defects the rebuild exists to fix. Do not regress them.
 4. **Every `SECURITY DEFINER` function sets `search_path = public, pg_temp`** and re-checks
    authorization internally — `is_admin()` at the top of admin RPCs, ownership or `guest_token`
    checks on customer RPCs. This is the highest-risk surface in a zero-backend design.
-5. **The anon key is public.** It ships in the JS bundle. Nothing may rely on it being secret.
+5. **The publishable key is public.** It ships in the JS bundle. Nothing may rely on it being
+   secret.
 6. **Admin is `profiles.role = 'admin'`,** checked in the DB. Never an env allowlist, never a
    client-side email comparison. `role` is pinned by the `profiles` UPDATE policy's `with check`,
    so a customer cannot self-promote.
