@@ -1,0 +1,220 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+/* Self-hosted, so there is no render-blocking request to fonts.googleapis.com.
+   @fontsource ships font-display: swap.
+
+   The `latin-` prefix matters: the unprefixed entrypoint also emits the
+   devanagari and latin-ext subsets, which is ~370 KB of files in dist that the
+   storefront never serves. Only the four weights actually used are imported --
+   adding one means adding a line here, deliberately. */
+@import '@fontsource/poppins/latin-400.css';
+@import '@fontsource/poppins/latin-500.css';
+@import '@fontsource/poppins/latin-600.css';
+@import '@fontsource/poppins/latin-700.css';
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Without these two, `font-sans` resolves to the Tailwind system stack and
+     Poppins only ever applies by inheritance from body -- which is exactly
+     how the old app silently lost its typeface. */
+  --font-sans: 'Poppins', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Poppins', ui-sans-serif, system-ui, sans-serif;
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+}
+
+/* ---------------------------------------------------------------------------
+   Light palette.
+
+   Everything is oklch so lightness is perceptually even across hues -- the old
+   palette mixed hex and oklch and had no consistent lightness ramp.
+
+   The brand forest green stays as --primary. It is no longer ALSO --foreground,
+   --accent, --ring and --chart-1: with all five identical, `text-accent` was
+   pixel-identical to body text and carried no emphasis whatsoever. Text is now
+   near-black, and --accent is a warm brass that actually reads as a highlight
+   against the green.
+--------------------------------------------------------------------------- */
+:root {
+  color-scheme: light;
+
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.242 0.023 156);
+
+  --card: oklch(0.985 0.004 157.2);
+  --card-foreground: oklch(0.242 0.023 156);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.242 0.023 156);
+
+  /* KOCHU forest green, #115d33. */
+  --primary: oklch(0.423 0.099 153.5);
+  --primary-foreground: oklch(1 0 0);
+
+  --secondary: oklch(0.947 0.012 157);
+  --secondary-foreground: oklch(0.382 0.078 156.1);
+
+  --muted: oklch(0.947 0.012 157);
+  --muted-foreground: oklch(0.487 0.032 156);
+
+  /* Warm brass. Sale badges, drop countdowns, MFS "awaiting verification". */
+  --accent: oklch(0.72 0.145 68);
+  --accent-foreground: oklch(0.27 0.055 62);
+
+  --destructive: oklch(0.585 0.205 25.3);
+  --destructive-foreground: oklch(1 0 0);
+  --success: oklch(0.58 0.132 152);
+  --success-foreground: oklch(1 0 0);
+  --warning: oklch(0.72 0.145 68);
+  --warning-foreground: oklch(0.27 0.055 62);
+  --info: oklch(0.56 0.124 245);
+  --info-foreground: oklch(1 0 0);
+
+  --border: oklch(0.878 0.029 158.6);
+  --input: oklch(0.878 0.029 158.6);
+  --ring: oklch(0.423 0.099 153.5);
+
+  --chart-1: oklch(0.423 0.099 153.5);
+  --chart-2: oklch(0.72 0.145 68);
+  --chart-3: oklch(0.648 0.09 155.8);
+  --chart-4: oklch(0.56 0.124 245);
+  --chart-5: oklch(0.878 0.029 158.6);
+
+  --sidebar: oklch(0.979 0.008 157.1);
+  --sidebar-foreground: oklch(0.242 0.023 156);
+  --sidebar-primary: oklch(0.423 0.099 153.5);
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.947 0.012 157);
+  --sidebar-accent-foreground: oklch(0.382 0.078 156.1);
+  --sidebar-border: oklch(0.878 0.029 158.6);
+  --sidebar-ring: oklch(0.423 0.099 153.5);
+
+  --radius: 0.375rem;
+}
+
+/* ---------------------------------------------------------------------------
+   Dark palette. Deep green ground rather than a neutral grey, so the brand
+   still reads. --primary stays green here too: inverting it to white (as the
+   old palette did) meant every primary button lost the brand entirely.
+--------------------------------------------------------------------------- */
+.dark {
+  color-scheme: dark;
+
+  --background: oklch(0.216 0.028 157);
+  --foreground: oklch(0.967 0.008 157);
+
+  --card: oklch(0.262 0.034 156.5);
+  --card-foreground: oklch(0.967 0.008 157);
+  --popover: oklch(0.262 0.034 156.5);
+  --popover-foreground: oklch(0.967 0.008 157);
+
+  --primary: oklch(0.72 0.115 154);
+  --primary-foreground: oklch(0.19 0.03 156);
+
+  --secondary: oklch(0.312 0.041 156);
+  --secondary-foreground: oklch(0.967 0.008 157);
+
+  --muted: oklch(0.312 0.041 156);
+  --muted-foreground: oklch(0.79 0.028 157);
+
+  --accent: oklch(0.79 0.135 72);
+  --accent-foreground: oklch(0.24 0.05 62);
+
+  --destructive: oklch(0.68 0.19 25.3);
+  --destructive-foreground: oklch(0.19 0.03 156);
+  --success: oklch(0.74 0.13 152);
+  --success-foreground: oklch(0.19 0.03 156);
+  --warning: oklch(0.79 0.135 72);
+  --warning-foreground: oklch(0.24 0.05 62);
+  --info: oklch(0.7 0.118 245);
+  --info-foreground: oklch(0.19 0.03 156);
+
+  --border: oklch(0.38 0.045 156);
+  --input: oklch(0.38 0.045 156);
+  --ring: oklch(0.72 0.115 154);
+
+  --chart-1: oklch(0.72 0.115 154);
+  --chart-2: oklch(0.79 0.135 72);
+  --chart-3: oklch(0.777 0.073 157.4);
+  --chart-4: oklch(0.7 0.118 245);
+  --chart-5: oklch(0.547 0.094 155.7);
+
+  --sidebar: oklch(0.262 0.034 156.5);
+  --sidebar-foreground: oklch(0.967 0.008 157);
+  --sidebar-primary: oklch(0.72 0.115 154);
+  --sidebar-primary-foreground: oklch(0.19 0.03 156);
+  --sidebar-accent: oklch(0.312 0.041 156);
+  --sidebar-accent-foreground: oklch(0.967 0.008 157);
+  --sidebar-border: oklch(0.38 0.045 156);
+  --sidebar-ring: oklch(0.72 0.115 154);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+
+  /* Mobile is the majority of traffic; never let a stray wide element
+     introduce a horizontal scrollbar on a phone. */
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+}
+
+@layer utilities {
+  /* Touch targets are >= 44px. Applied to icon-only controls in the header
+     and nav, where the visual box would otherwise be smaller than the hit box. */
+  .tap-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+}

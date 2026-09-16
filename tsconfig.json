@@ -1,0 +1,14 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./tsconfig.app.json" },
+    { "path": "./tsconfig.node.json" }
+  ],
+  // Duplicated from tsconfig.app.json only because the shadcn CLI reads the
+  // root tsconfig to resolve "@/..." -- without it, `shadcn add` writes into a
+  // literal ./@/ directory instead of ./src/.
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": { "@/*": ["./src/*"] }
+  }
+}

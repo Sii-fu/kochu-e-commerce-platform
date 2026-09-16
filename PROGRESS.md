@@ -108,6 +108,39 @@ That is still the only manual step in the system, by design — there is no
 bootstrap backdoor. It runs as the SQL editor's superuser session; a signed-in
 customer attempting the same statement gets `ROLE_CHANGE_FORBIDDEN`.
 
+### Phase 2 — Shell ✅
+
+Vite + React 19 + TS builds, typechecks, lints and tests clean.
+
+- **Build**: `vite.config.ts` with `@tailwindcss/vite` (no PostCSS), tsconfig
+  project references, `vite-tsconfig-paths`, ESLint 9 flat config. `tsc -b` is
+  clean — there is no `ignoreBuildErrors` escape hatch here and never will be.
+- **Tokens** (`src/styles/globals.css`): whole palette converted to `oklch()`.
+  Brand green `#115d33` = `oklch(0.423 0.099 153.5)` stays as `--primary`, but
+  is no longer *also* `--foreground`, `--accent`, `--ring` and `--chart-1` —
+  with all five identical, `text-accent` was pixel-identical to body text. The
+  new `--accent` is a warm brass, and `--success` / `--warning` / `--info` /
+  `--destructive` are real tokens so no status ever needs a raw `bg-red-100`.
+- **Type**: Poppins self-hosted via `@fontsource`, and `--font-sans` /
+  `--font-display` are set in `@theme` — previously the font applied only by
+  inheritance because `font-sans` still resolved to the system stack.
+- **28 shadcn primitives** in `src/components/ui`, Radix-based, `rsc: false`.
+- **Layout**: `RootLayout` / `Header` / `MobileNav` / `Footer`, skip link,
+  44px touch targets, cart badge fed by the Zustand store.
+- **Router**: every route in the plan resolves, `/admin` is a separate lazy
+  chunk (0.22 kB, so storefront visitors never download it), branded 404, and
+  a route-level error boundary with retry.
+- **`formatBDT`** over `Intl.NumberFormat('en-BD', …)`.
+
+Gate: **35 tests green**, `tsc -b` clean, `eslint` 0 errors, production build
+2.2s. Dev server serves the app and deep links resolve.
+
+⚠️ **Not verified in a browser.** No browser automation was available in this
+environment, so `src/test/shell.test.tsx` asserts that every route mounts, the
+mobile nav opens and closes on navigation, and nothing logs an error — but
+nobody has *looked* at it. Worth five minutes with `npm run dev` before
+Phase 3 leans on the layout.
+
 ---
 
 ## The gate — 44 checks, `npm run db:verify`
@@ -191,7 +224,6 @@ race-proof. Check 13 was added to cover it.
 
 | Phase | Scope | Est. |
 |---|---|---|
-| **2** | Vite shell: Tailwind v4 tokens, shadcn primitives, router, layout, header/mobile nav/footer, `formatBDT`, providers | 1d |
 | **3** | Auth: sign in/up/reset, `RequireAuth`, `RequireAdmin`, profile, address book | 1d |
 | **4** | Storefront reads: home, `/shop` with URL-synced filters + ⌘K search, PDP with gallery + variants, collections, articles, drops, early access | 3d |
 | **5** | Cart drawer + checkout + MFS QR/TrxID + order confirmation → **first real transaction** | 2.5d |
@@ -199,7 +231,16 @@ race-proof. Check 13 was added to cover it.
 | **7** | Polish: skeletons, error boundaries, 404, `/contact` `/faq` `/shipping`, SEO, Lighthouse ≥90 mobile, a11y | 2d |
 | **8** | Cutover: delete `_legacy/`, deploy with SPA rewrite, production redirect URLs, promote admin | 0.5d |
 
-**~14.5 days remaining.**
+**~13.5 days remaining.**
+
+### One thing to know before Phase 3
+
+Port **5173 is already taken** on this machine by another project's dev server,
+so `npm run dev` falls through to **5174**. That matters for auth: Supabase
+redirects are allow-listed, and `supabase/config.toml` currently names
+`http://localhost:5173`. Either free the port, or add 5174 to `site_url` /
+`additional_redirect_urls` before wiring sign-in, or the email confirmation and
+password-reset links will bounce.
 
 ---
 
@@ -250,6 +291,22 @@ race-proof. Check 13 was added to cover it.
    where the plan described them as manual. Both needed to be re-runnable:
    they are exactly the checks that must pass again after any change to
    `create_order`, and defect 2 was only found because they were cheap to run.
+9. **`/admin` uses react-router's route-level `lazy()`, not `React.lazy`.** Same
+   outcome — a separate chunk the storefront never downloads — but it is the
+   data-router's own mechanism, so it needs no Suspense boundary and will carry
+   loaders when Phase 6 wants them.
+10. **Unbuilt routes share one `StubPage` rather than 25 placeholder files.**
+   The routes exist from Phase 2 so navigation and deep links are testable
+   before the screens are; each is swapped for a real module as its phase
+   lands. When `StubPage` has no callers left, delete it.
+11. **vitest 3, not 2.** vitest 2 pins Vite 5 and the project is on Vite 6, so
+   two copies of Vite ended up installed and their plugin types conflicted.
+12. **Fonts import the `latin-` subset explicitly.** The unprefixed
+   `@fontsource/poppins` entrypoint also emits devanagari and latin-ext, which
+   was 370 KB of files in `dist` the storefront never serves.
+13. **`paths` is duplicated into the root `tsconfig.json`.** The shadcn CLI
+   reads it directly to resolve `@/…`; without it, `shadcn add` silently writes
+   components into a literal `./@/` directory instead of `./src/`.
 
 ---
 
