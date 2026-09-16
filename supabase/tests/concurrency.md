@@ -1,5 +1,11 @@
 # The two-session concurrency test
 
+> **Locally this is automated.** `bash supabase/tests/concurrency.sh` runs all
+> three tests below against `npx supabase start` and asserts the outcomes. Use
+> it as the routine check after any change to `create_order`. The manual
+> procedure below is for the **hosted** database, where you want to watch the
+> lock actually block.
+
 `verify_phase1.sql` covers everything a single session can prove. It cannot
 prove the one thing that actually matters on a drop launch: that two buyers
 racing for the last unit produce **one order, not two**.
@@ -116,9 +122,12 @@ select create_order(jsonb_build_object(
 
 Commit session 1, then session 2.
 
-**Expected:** session 2 fails on the `orders_idempotency_key_key` unique
-violation, *or* returns the same order with `replayed: true` — either is
-correct. What must never happen is two orders.
+**Expected:** session 2 returns the **same order** with `replayed: true`.
+
+`create_order` catches the `orders_idempotency_key_key` unique violation and
+re-reads the winner's order rather than letting a raw `23505` escape — the
+customer's order did succeed, so showing them a database error would be wrong.
+A bare unique violation reaching the client is a regression.
 
 ```sql
 select count(*) from orders where idempotency_key = 'race-same';

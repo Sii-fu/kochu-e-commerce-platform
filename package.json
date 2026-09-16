@@ -16,7 +16,13 @@
     "test:watch": "vitest",
     "db:push": "supabase db push",
     "db:types": "supabase gen types typescript --linked > src/lib/supabase/types.ts",
-    "db:seed": "node --env-file=.env.seed supabase/seed/seed.mjs"
+    "db:seed": "node --env-file=.env.seed supabase/seed/seed.mjs",
+    "db:start": "supabase start",
+    "db:stop": "supabase stop",
+    "db:reset": "supabase db reset",
+    "db:types:local": "supabase gen types typescript --local > src/lib/supabase/types.ts",
+    "db:seed:local": "node --env-file=.env.seed.local supabase/seed/seed.mjs",
+    "db:verify": "bash supabase/tests/run_all.sh"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",

@@ -92,14 +92,24 @@ create trigger profiles_touch_updated_at
 -- subquery is itself subject to profiles'' RLS and recurses. WITH CHECK also
 -- cannot see OLD. A BEFORE UPDATE trigger sees both rows, covers every write
 -- path (policy, RPC, dashboard), and cannot recurse.
+-- Deliberately NOT security definer: the guard needs to see which role is
+-- actually driving the write. Inside a definer function current_user is always
+-- the owner, which would make the check below vacuous. is_admin() is definer
+-- in its own right, so it still reads profiles fine from here.
+--
+-- Only anon and authenticated are restricted -- those are the two roles a
+-- browser-side key can reach. A service_role or superuser session (the SQL
+-- editor, the seed script) is the deliberate bootstrap path for promoting the
+-- first admin, since there is no other way to create one.
 create or replace function public.guard_profile_role()
 returns trigger
 language plpgsql
-security definer
 set search_path = public, pg_temp
 as $$
 begin
-  if new.role is distinct from old.role and not is_admin() then
+  if new.role is distinct from old.role
+     and current_user in ('anon', 'authenticated')
+     and not is_admin() then
     raise exception 'ROLE_CHANGE_FORBIDDEN';
   end if;
   return new;

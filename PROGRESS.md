@@ -1,6 +1,6 @@
 # KOCHU rebuild — progress
 
-Last updated: 2026-09-16 · Phase 1 of 8 (code complete, **unverified**)
+Last updated: 2026-09-16 · Phase 1 of 8 — **verified against a real Postgres** ✅
 
 Rebuilding the Next.js 16 / Neon / Drizzle / better-auth storefront in place as a
 pure client-side **Vite + React 19 + Supabase** SPA. Full architecture lives in
@@ -8,65 +8,50 @@ pure client-side **Vite + React 19 + Supabase** SPA. Full architecture lives in
 
 ---
 
-## ⛔ Start here tomorrow
+## Where things stand
 
-Two things block progress. Both need you, not me.
+Phase 1 is **done and verified**. Both of yesterday's blockers cleared: Node is
+now v24.20.0, and rather than wait on a hosted project, the whole schema was
+verified against a real Postgres locally via Docker + the Supabase CLI. All
+nine migrations applied cleanly, the seed runs, and the full gate is green.
 
-### 1. Upgrade Node to 22 LTS
+Verification found and fixed two genuine defects — see
+[Defects caught by the gate](#defects-caught-by-the-gate).
 
-Current: **v20.14.0**. `@supabase/supabase-js@2.117` does not run on it —
-it fails at import:
-
-```
-IMPORT FAILED: Node.js detected but native WebSocket not found.
-Suggested solution: Ensure you are running Node.js 22+
-```
-
-This breaks the seed script. (The browser app is unaffected — browsers have
-`WebSocket` natively.) Vite 6 and ESLint 9 also want newer Node, so this is
-worth doing regardless.
-
-Get the Node 22 LTS installer from nodejs.org, then:
+### Run it yourself
 
 ```bash
-node --version      # expect v22.x
-rm -rf node_modules && npm install
+npm run db:start        # local Supabase in Docker (first run pulls ~2GB)
+npm run db:reset        # apply 0001-0009 from scratch
+npm run db:seed:local   # catalog + images
+npm run db:verify       # the whole gate: 13 + 10 + 21 checks
 ```
 
-`engines: { node: ">=22" }` is now in `package.json`, so npm will warn if this
-gets missed.
+`db:verify` ends in `PHASE 1 GATE: GREEN` or a non-zero exit.
 
-### 2. Create the Supabase project
+### Still needed from you — the hosted project
 
-- Region **ap-southeast-1 (Singapore)** — closest to Dhaka, ~40ms vs ~250ms
-  for us-east.
-- Free tier is fine for now.
-- Save the database password when it's shown. **It is shown exactly once.**
+Local proves the schema. It does not give you a real environment, so this is
+the one remaining Phase 1 item, and it is the gate on **Phase 8**, not on
+Phases 2–7 — the frontend can be built entirely against local.
 
----
+- Create the project, region **ap-southeast-1 (Singapore)** — closest to Dhaka,
+  ~40ms vs ~250ms for us-east. Free tier is fine.
+- Save the database password when it is shown. **It is shown exactly once.**
 
-## What I need from you
+Then either paste the **Project ref**, **Project URL** and **anon key** here
+(all three are public by design — the anon key ships in the JS bundle), or set
+them up yourself:
 
-Paste these four values and say "continue":
+```bash
+npx supabase login
+npx supabase link --project-ref <REF>
+npm run db:push && npm run db:types && npm run db:seed
+```
 
-| What | Where to find it |
-|---|---|
-| **Project ref** | The `abcdefgh...` in your project URL, or Settings → General |
-| **Project URL** | Settings → API → Project URL (`https://<ref>.supabase.co`) |
-| **anon public key** | Settings → API → Project API keys → `anon` `public` |
-| **service_role key** | Settings → API → `service_role` — ⚠️ see below |
-| **DB password** | The one you saved at project creation |
-
-### About the two keys
-
-- **anon key** — public by design. It ships inside the JavaScript bundle and
-  anyone can read it. Goes in `.env`. Safe to paste here.
-- **service_role key** — bypasses RLS completely. Goes only in `.env.seed`
-  (gitignored), used only by the seed script. **If you would rather not paste
-  it into chat, don't** — create `.env.seed` yourself from `.env.example` and
-  just tell me it's done. I never need to see it.
-
-Neither file is committed; `.gitignore` covers `.env` and `.env.*`.
+The **service_role key** bypasses RLS entirely. It belongs only in `.env.seed`
+(gitignored) and is used only by the seed script. Don't paste it here — create
+the file yourself from `.env.example`. I never need to see it.
 
 ---
 
@@ -86,10 +71,10 @@ Neither file is committed; `.gitignore` covers `.env` and `.env.*`.
 - New `package.json`, `.gitignore`, `.env.example`.
 - 408 packages installed.
 
-### Phase 1 — Database (code complete, **not yet run**) ⚠️
+### Phase 1 — Database ✅
 
-Nine migrations in `supabase/migrations/`, none executed against a real
-Postgres yet:
+Nine migrations in `supabase/migrations/`, all applied cleanly to a real
+Postgres 15 and verified:
 
 | File | Contents |
 |---|---|
@@ -103,52 +88,35 @@ Postgres yet:
 | `0008_storage.sql` | 5 buckets + policies |
 | `0009_indexes_analytics.sql` | 24 indexes + `admin_dashboard_stats()` |
 
-Also written:
+Also written and exercised:
 
 - `supabase/config.toml`
-- `supabase/seed/seed.mjs` — catalog seed, idempotent, converts PNG→WebP on
-  upload. Ports the old `scripts/seed.ts` content with BDT pricing and real
-  size variants.
-- `supabase/tests/verify_phase1.sql` — **12 automated gate checks**, runs in a
-  transaction and rolls back.
-- `supabase/tests/concurrency.md` — the 3 two-session race tests that a single
-  session can't perform.
+- `supabase/seed/seed.mjs` — catalog seed. Verified idempotent: two runs leave
+  4 products / 15 variants / 4 images, not 8 / 30 / 8. Converts PNG→WebP on
+  upload, which takes the seed photography from ~1100 KB to ~55 KB each.
+- `src/lib/supabase/types.ts` — **generated** from the live local schema
+  (1515 lines, all 10 RPCs typed). Never hand-edit.
 
----
-
-## What runs the moment the DB exists
-
-```bash
-npx supabase login
-npx supabase link --project-ref <REF>
-npm run db:push        # apply 0001-0009
-npm run db:types       # generate src/lib/supabase/types.ts
-npm run db:seed        # catalog + images (needs .env.seed)
-```
-
-Then the gate — paste `supabase/tests/verify_phase1.sql` into the Supabase SQL
-editor. It must print:
-
-```
-================================
- PHASE 1: ALL CHECKS PASSED
-================================
-```
-
-Then create an account through the app and promote it once, by hand:
+Signup → `profiles` row via trigger works, and the by-hand first-admin
+promotion works:
 
 ```sql
 update profiles set role = 'admin' where email = 'you@example.com';
 ```
 
-This is the only manual step in the whole system, by design — there is no
-bootstrap backdoor.
+That is still the only manual step in the system, by design — there is no
+bootstrap backdoor. It runs as the SQL editor's superuser session; a signed-in
+customer attempting the same statement gets `ROLE_CHANGE_FORBIDDEN`.
 
 ---
 
-## The 12 gate checks
+## The gate — 44 checks, `npm run db:verify`
 
 Not ceremony. Each one pins a specific defect found in the old codebase.
+
+### `verify_phase1.sql` — 13 in-database checks
+
+Runs in a transaction and rolls back, so it is safe against a seeded database.
 
 | # | Check | Why |
 |---|---|---|
@@ -160,17 +128,62 @@ Not ceremony. Each one pins a specific defect found in the old codebase.
 | 6 | MFS order stays `PENDING_PAYMENT`; right token opens it, wrong token doesn't | guest checkout security |
 | 7 | Cancel restores stock **exactly once**; second cancel refused | old `updateOrderStatus` silently destroyed inventory on cancel |
 | 8 | Non-admin gets `FORBIDDEN` from admin RPCs | RBAC |
-| 9 | Customer **cannot** self-promote to admin | the role-guard trigger |
+| 9 | Customer **cannot** self-promote — *run as the real `authenticated` role* | the role-guard trigger |
 | 10 | `anon` reads 0 rows from `orders` | RLS |
 | 11 | `anon` can't see an unopened drop's products | RLS + drop gating |
 | 12 | `anon` can't list discount codes | anon key must not be a coupon dump |
+| 13 | Discount applies, is spent **once**, exhausted code refused | added after the step-10 reordering below |
 
-Plus, from `concurrency.md` (needs two psql terminals):
+### `concurrency.sh` — 10 assertions across 3 race tests
+
+Automated locally; `concurrency.md` keeps the manual procedure for the hosted DB.
 
 - **A** — two buyers, one unit → exactly **one** order, stock `0` never `-1`
-- **B** — same key twice concurrently → one order
+- **B** — same key, both in flight → one order, and the loser gets a clean
+  `replayed: true`, not a raw `23505`
 - **C** — two carts with the same variants in opposite order → **no deadlock**
   (this is what the `order by v.id` locking exists for)
+
+### `rest_check.sh` — 21 checks through PostgREST
+
+The ones the other two structurally cannot make. In-database tests run as
+`postgres`; they cannot prove what the public API exposes. A missing `GRANT`,
+a policy that never applies to `anon`, or an admin RPC missing its check would
+all pass `verify_phase1.sql` and fail here.
+
+This is the curl-against-REST admin check that **Phase 6's gate** calls for,
+already green ahead of the admin UI existing.
+
+---
+
+## Defects caught by the gate
+
+Exactly what it was for. Neither was visible by reading the SQL.
+
+**1. The role guard blocked its own bootstrap.** `profiles_guard_role` raised
+`ROLE_CHANGE_FORBIDDEN` for *every* session where `is_admin()` was false —
+including the SQL editor, where `auth.uid()` is null. So the documented
+"promote the first admin by hand" step could never have worked, and there was
+no other way to create an admin. The trigger now restricts only `anon` and
+`authenticated`, the two roles a browser-side key can reach; a superuser or
+`service_role` session is the deliberate bootstrap path. It is no longer
+`SECURITY DEFINER`, because inside a definer function `current_user` is always
+the owner, which would have made the new check vacuous.
+
+**2. `create_order` was idempotent sequentially but not concurrently.** The
+step-1 replay check catches a retry that arrives *after* the first order
+commits. Two requests in flight at once both pass it, and the loser took a raw
+unique-constraint violation — a customer double-clicking Place Order on a
+flaky mobile connection would have seen a database error for an order that
+actually succeeded. The insert now catches `unique_violation`, re-reads by
+idempotency key, and returns the same `replayed: true` answer. It re-raises if
+the conflict was some *other* unique constraint, so an `order_number`
+collision can never hand back another customer's `guest_token`.
+
+That fix moved `used_count = used_count + 1` to after the order insert, so a
+losing race no longer burns a discount use on an order it never created. The
+`FOR UPDATE` lock still sits at validation time, so `max_uses` remains
+race-proof. Check 13 was added to cover it.
 
 ---
 
@@ -178,7 +191,6 @@ Plus, from `concurrency.md` (needs two psql terminals):
 
 | Phase | Scope | Est. |
 |---|---|---|
-| **1 (finish)** | Run migrations, seed, verify all 12 + 3 race tests | 0.5d |
 | **2** | Vite shell: Tailwind v4 tokens, shadcn primitives, router, layout, header/mobile nav/footer, `formatBDT`, providers | 1d |
 | **3** | Auth: sign in/up/reset, `RequireAuth`, `RequireAdmin`, profile, address book | 1d |
 | **4** | Storefront reads: home, `/shop` with URL-synced filters + ⌘K search, PDP with gallery + variants, collections, articles, drops, early access | 3d |
@@ -217,7 +229,9 @@ Plus, from `concurrency.md` (needs two psql terminals):
    `with check (role = (select role from profiles where id = auth.uid()))`
    is a recursion trap — that subquery is itself subject to profiles' RLS.
    `WITH CHECK` also can't see `OLD`. `profiles_guard_role` (0002) sees both
-   rows and covers every write path.
+   rows and covers every write path. It restricts only `anon` and
+   `authenticated` — see defect 1 above for why the unrestricted version could
+   not be bootstrapped.
 4. **Seed is `.mjs`, not `.ts`.** `--experimental-strip-types` needs Node 22.6+.
    Not worth a transpile step for a script that runs a handful of times.
 5. **Explicit table `GRANT`s in 0007.** Supabase's default privileges would
@@ -227,6 +241,15 @@ Plus, from `concurrency.md` (needs two psql terminals):
 6. **bKash/Nagad numbers are placeholders** (`+8801XXXXXXXXX`) per your call.
    Set the real ones in `/admin/settings` once Phase 6 lands — they live in
    `store_settings`, so no redeploy is needed.
+7. **Migrations 0002 and 0006 were edited rather than superseded by an 0010.**
+   The invariant is "never edit a *pushed* migration"; these had only ever
+   been applied to a throwaway local database, and the hosted project does not
+   exist yet, so there is no history anywhere to drift from. Once you push to
+   the real project, that rule takes effect for good.
+8. **The race and REST suites are scripted** (`concurrency.sh`, `rest_check.sh`),
+   where the plan described them as manual. Both needed to be re-runnable:
+   they are exactly the checks that must pass again after any change to
+   `create_order`, and defect 2 was only found because they were cheap to run.
 
 ---
 
@@ -236,8 +259,13 @@ Plus, from `concurrency.md` (needs two psql terminals):
   `unique (provider, trx_id)` blocks receipt reuse, but a fabricated TrxID is
   only caught by a human checking the merchant app. `reviewer_id` is always
   logged.
-- **Nothing is verified yet.** The SQL is carefully reviewed but has never been
-  executed. Expect to fix a syntax error or two on first `db push` — that is
-  what Phase 1's gate is for, and why it runs before any UI exists.
+- **Verified on Postgres 15 locally, not yet on the hosted project.** The
+  hosted database will be Postgres 17. Nothing in the schema is version-
+  sensitive, but `db push` against the real project is still an unrun step —
+  run `npm run db:verify`'s SQL there once it exists.
 - **All security rests on RLS + in-RPC checks**, because the anon key is public.
-  The anon-role checks (10–12) are not optional.
+  The anon-role checks are not optional, and `rest_check.sh` is the one that
+  actually tests them the way a client would.
+- **`db:verify` is a local-only harness.** It shells out to `docker exec` and
+  assumes the `supabase_db_kochu-storefront` container. It is a development
+  gate, not CI.

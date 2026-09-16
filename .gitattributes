@@ -1,0 +1,7 @@
+# Shell scripts must keep LF endings. A CRLF checkout on Windows makes bash
+# read the trailing \r as part of each command and fail with errors like
+# "$'\r': command not found".
+*.sh text eol=lf
+
+# psql reads these as scripts too.
+*.sql text eol=lf

@@ -232,8 +232,10 @@ begin
   if v_locked   > 0 then raise exception 'DROP_NOT_OPEN';       end if;
 
   ---------------------------------------------------------------------------
-  -- 5. Discount: re-validated here and locked, so used_count cannot be
-  --    driven past max_uses by concurrent checkouts.
+  -- 5. Discount: re-validated here and locked FOR UPDATE, so no concurrent
+  --    checkout can drive used_count past max_uses. The lock is held for the
+  --    rest of the transaction; the increment itself happens in step 10, once
+  --    the order is known to exist.
   ---------------------------------------------------------------------------
   if nullif(trim(payload ->> 'discount_code'), '') is not null then
     select * into c
@@ -254,10 +256,6 @@ begin
                     when c.type = 'PERCENT' then (v_subtotal * c.value) / 100
                     else least(c.value, v_subtotal)
                   end;
-
-    update discount_codes
-       set used_count = used_count + 1
-     where id = c.id;
   end if;
 
   ---------------------------------------------------------------------------
@@ -271,27 +269,53 @@ begin
   v_status := case when v_method = 'COD' then 'PROCESSING'
                    else 'PENDING_PAYMENT' end;
 
-  insert into orders (
-    user_id, guest_email, customer_name, phone, shipping_address,
-    status, payment_method, payment_status,
-    subtotal_minor, discount_minor, shipping_minor, total_minor,
-    discount_code, idempotency_key, processing_at
-  )
-  values (
-    v_uid,
-    nullif(trim(payload ->> 'email'), '')::citext,
-    trim(payload ->> 'customer_name'),
-    trim(payload ->> 'phone'),
-    payload -> 'shipping_address',
-    v_status, v_method, 'UNPAID',
-    v_subtotal, v_discount, v_shipping,
-    v_subtotal - v_discount + v_shipping,
-    nullif(trim(payload ->> 'discount_code'), '')::citext,
-    v_idem,
-    case when v_status = 'PROCESSING' then now() end
-  )
-  returning id, guest_token, order_number
-       into v_order_id, v_token, v_number;
+  -- The step-1 replay check catches a *sequential* retry. It cannot catch two
+  -- requests in flight at once: both pass it, then both insert. The UNIQUE
+  -- constraint on idempotency_key is what actually decides the race, so the
+  -- loser is converted into the same replay answer the winner got rather than
+  -- surfacing a raw 23505 to a customer whose order did in fact succeed.
+  begin
+    insert into orders (
+      user_id, guest_email, customer_name, phone, shipping_address,
+      status, payment_method, payment_status,
+      subtotal_minor, discount_minor, shipping_minor, total_minor,
+      discount_code, idempotency_key, processing_at
+    )
+    values (
+      v_uid,
+      nullif(trim(payload ->> 'email'), '')::citext,
+      trim(payload ->> 'customer_name'),
+      trim(payload ->> 'phone'),
+      payload -> 'shipping_address',
+      v_status, v_method, 'UNPAID',
+      v_subtotal, v_discount, v_shipping,
+      v_subtotal - v_discount + v_shipping,
+      nullif(trim(payload ->> 'discount_code'), '')::citext,
+      v_idem,
+      case when v_status = 'PROCESSING' then now() end
+    )
+    returning id, guest_token, order_number
+         into v_order_id, v_token, v_number;
+  exception when unique_violation then
+    select o.id, o.guest_token, o.order_number
+      into v_order_id, v_token, v_number
+    from orders o
+    where o.idempotency_key = v_idem;
+
+    -- Only an idempotency_key collision is a replay. Anything else (an
+    -- order_number collision, say) must not be answered with another
+    -- customer's order and guest_token.
+    if not found then
+      raise;
+    end if;
+
+    return jsonb_build_object(
+      'order_id',     v_order_id,
+      'guest_token',  v_token,
+      'order_number', v_number,
+      'replayed',     true
+    );
+  end;
 
   ---------------------------------------------------------------------------
   -- 8. Items, with name/label/image snapshotted so history survives deletion.
@@ -334,6 +358,16 @@ begin
     from jsonb_array_elements(v_items) x
   ) r
   where v.id = r.variant_id;
+
+  ---------------------------------------------------------------------------
+  -- 10. Spend the discount only now, so a checkout that lost the idempotency
+  --     race does not burn a second use on an order it never created.
+  ---------------------------------------------------------------------------
+  if c.id is not null then
+    update discount_codes
+       set used_count = used_count + 1
+     where id = c.id;
+  end if;
 
   return jsonb_build_object(
     'order_id',     v_order_id,

@@ -339,16 +339,100 @@ begin
   -------------------------------------------------------------------------
   raise notice '--- 9. a customer cannot promote themselves ---';
   -------------------------------------------------------------------------
+  -- This must run as the real `authenticated` role, not as postgres. The
+  -- guard deliberately exempts superuser/service_role sessions -- that is the
+  -- first-admin bootstrap path -- so running it as postgres would prove
+  -- nothing about what a signed-in customer can do.
   begin
+    set local role authenticated;
     update profiles set role = 'admin' where id = v_user_a;
+    reset role;
     raise exception 'FAIL 9: self-promotion succeeded';
   exception
     when sqlstate 'P0001' then
+      reset role;
       if sqlerrm <> 'ROLE_CHANGE_FORBIDDEN' then
         raise exception 'FAIL 9: wrong error "%"', sqlerrm;
       end if;
   end;
-  raise notice 'PASS 9  (ROLE_CHANGE_FORBIDDEN)';
+
+  if (select role from profiles where id = v_user_a) <> 'customer' then
+    raise exception 'FAIL 9: role changed despite the guard';
+  end if;
+  raise notice 'PASS 9  (ROLE_CHANGE_FORBIDDEN as authenticated)';
+
+  -------------------------------------------------------------------------
+  raise notice '--- 13. a discount applies once and is spent once ---';
+  -------------------------------------------------------------------------
+  insert into discount_codes (code, type, value, max_uses)
+  values ('VERIFY10', 'PERCENT', 10, 1);
+
+  v_res := create_order(jsonb_build_object(
+    'idempotency_key', 'verify-key-13',
+    'payment_method', 'COD',
+    'customer_name', 'Coupon User',
+    'phone', '+8801700000000',
+    'shipping_address', jsonb_build_object('line1', '1 Test Rd', 'city', 'Dhaka'),
+    'discount_code', 'verify10',          -- citext: case must not matter
+    'items', jsonb_build_array(
+      jsonb_build_object('variant_id', v_var_a, 'quantity', 1))
+  ));
+  v_order := (v_res ->> 'order_id')::uuid;
+
+  select discount_minor into v_total from orders where id = v_order;
+  if v_total <> 10000 then
+    raise exception 'FAIL 13: discount is %, expected 10000', v_total;
+  end if;
+
+  select total_minor into v_total from orders where id = v_order;
+  if v_total <> 100000 - 10000 + shipping_for(90000) then
+    raise exception 'FAIL 13: total is %, expected %',
+      v_total, 100000 - 10000 + shipping_for(90000);
+  end if;
+
+  select used_count into v_count from discount_codes where code = 'VERIFY10';
+  if v_count <> 1 then
+    raise exception 'FAIL 13: used_count is %, expected 1', v_count;
+  end if;
+
+  -- A replay must not spend a second use. The increment deliberately sits
+  -- after the order insert so a losing race burns nothing.
+  perform create_order(jsonb_build_object(
+    'idempotency_key', 'verify-key-13',
+    'payment_method', 'COD',
+    'customer_name', 'Coupon User',
+    'phone', '+8801700000000',
+    'shipping_address', jsonb_build_object('line1', '1 Test Rd', 'city', 'Dhaka'),
+    'discount_code', 'verify10',
+    'items', jsonb_build_array(
+      jsonb_build_object('variant_id', v_var_a, 'quantity', 1))
+  ));
+
+  select used_count into v_count from discount_codes where code = 'VERIFY10';
+  if v_count <> 1 then
+    raise exception 'FAIL 13: replay spent a second use (now %)', v_count;
+  end if;
+
+  -- max_uses is now exhausted, so a fresh order must be refused.
+  begin
+    perform create_order(jsonb_build_object(
+      'idempotency_key', 'verify-key-13b',
+      'payment_method', 'COD',
+      'customer_name', 'Late Coupon User',
+      'phone', '+8801700000000',
+      'shipping_address', jsonb_build_object('line1', '1 Test Rd', 'city', 'Dhaka'),
+      'discount_code', 'VERIFY10',
+      'items', jsonb_build_array(
+        jsonb_build_object('variant_id', v_var_a, 'quantity', 1))
+    ));
+    raise exception 'FAIL 13: an exhausted code was accepted';
+  exception
+    when sqlstate 'P0001' then
+      if sqlerrm <> 'INVALID_DISCOUNT' then
+        raise exception 'FAIL 13: wrong error "%"', sqlerrm;
+      end if;
+  end;
+  raise notice 'PASS 13 (10%% applied, spent once, exhausted code refused)';
 
   perform set_config('request.jwt.claims', null, true);
   raise notice 'ALL IN-SESSION CHECKS PASSED';
