@@ -51,8 +51,11 @@ Nothing is currently blocking Phase 4.
 
 ## What's next
 
-Phase 4 (storefront browsing) is done — 44 tests green, verified against the
-real local database. Worth 5-10 minutes with `npm run dev` when you get a
-chance: browse `/shop`, filter by category/price, open a product, check
-`/drops`, `/collections`, `/articles`. Nothing's blocking Phase 5 (cart +
-checkout — the first real transaction) either way; I'll start it now.
+Phase 4 (storefront browsing) is done and the database is now seeded with a
+much wider spread of test data — 19 products, 4 drops, 6 articles, discount
+codes in every state, 5 guest orders — on **both** local and the hosted
+project. Nothing's blocking Phase 5 (cart + checkout — the first real
+transaction) either way; I'll start it now.
+
+See the chat for where to look at what exists so far and what's still
+Phase 5/6/7 work.

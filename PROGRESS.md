@@ -272,6 +272,42 @@ browsing products never read an article — that alone brought it to 580 KB.
 Not chased further: Phase 5 and 6 will reshape the bundle again, and
 Lighthouse performance is explicitly Phase 7's gate.
 
+### Seed data — expanded for real UI testing ✅
+
+The original seed (4 products, 2 drops, 3 articles, 1 discount code) was
+enough to verify RLS but too thin to actually browse. Now: **19 products, 3
+collections, 4 drops, 6 articles, 5 discount codes, 5 early-access signups,
+5 guest orders** — on both local and the hosted project.
+
+Deliberately includes the edge cases that had no real data behind them
+before: a DRAFT and an ARCHIVED product, a fully sold-out product, a
+partially sold-out one, low-stock-everywhere, two sale prices, a live drop
+with real products attached, an unpublished drop, and discount codes in
+every state (active percent, active fixed, expired, exhausted, deactivated).
+Photography beyond the original four items is a generated solid-colour
+placeholder (`sharp`, no network fetch) — see `supabase/seed/seed.mjs`'s
+top comment for the full list of what each row is there to exercise.
+
+Seeding an ended drop exposed a real bug: `getDrops()` classified anything
+that failed "is it live" as "upcoming", so an ended drop rendered a
+countdown to a start time already in the past. Fixed with a third bucket
+(live/upcoming/ended) — see `src/lib/supabase/queries.ts`.
+
+Orders are seeded through the real `create_order()` RPC, never a direct
+insert. Walking two to `SHIPPED`/`CANCELLED` couldn't go through
+`admin_update_order_status()` though: confirmed directly against the local
+stack that a service-role connection has `auth.uid() = null`, so the
+function's internal `is_admin()` check fails even though service_role
+otherwise bypasses RLS entirely — RLS bypass and an in-function
+authorization check are different mechanisms. That transition's
+stock-restore logic is replicated directly against the tables instead,
+seed-script-only.
+
+Verified: two full seed runs produce identical row counts (idempotent), and
+anon sees exactly 15 of 19 products — the 4 missing are exactly the
+VIP-gated, archived, draft, and ended-drop ones. Full Phase 1 gate (44
+checks) re-run clean on top of the new data.
+
 ---
 
 ## The gate — 44 checks, `npm run db:verify`
