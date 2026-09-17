@@ -37,33 +37,60 @@ npm run db:seed
 
 ## 2. Create your admin account
 
-Once seeded, sign up through the app (once Phase 3 auth exists) **or** create
-the user directly in the Supabase dashboard: **Authentication → Users → Add
-user**. Use your real email.
+⚠️ **Still not done** — the SQL you ran used the literal placeholder text
+`you@example.com`, which matched zero rows (no such profile exists), so
+nothing was promoted.
 
-Then, in the hosted project's **SQL Editor**, run:
+Also worth knowing, confirmed by testing just now: the **hosted** project
+validates signup emails against real DNS and enforces email rate limits
+(unlike the local stack, which accepts anything). So this has to be a real
+email address you can receive mail at — no `@example.com`, no made-up domain.
+
+Easiest path — the dashboard, no auth UI needed yet:
+**Authentication → Users → Add user**, use your real email.
+
+Then, in the hosted project's **SQL Editor**, run the same statement but with
+*that* email:
 
 ```sql
-update profiles set role = 'admin' where email = 'you@example.com';
+update profiles set role = 'admin' where email = 'your-real-email@...';
 ```
 
-(Swap in the email you actually signed up with.)
-
-**Tell me:** the email you used, so I know which account to expect as admin
-when building the admin panel.
+**Tell me:** the email you actually used, so I know which account to expect
+as admin when building the admin panel.
 
 ---
 
 ## 3. Run the Phase 1 gate against the hosted database
 
-This has only been verified against the *local* Docker stack so far, not the
-real project. In the hosted **SQL Editor**, paste and run the contents of:
+✅ **Partly done, by me.** `verify_phase1.sql` needs a direct Postgres
+connection (the DB password) to run its `do $$ ... $$` blocks, which I don't
+have and won't ask you for over chat. But most of what it checks is also
+reachable through the public REST API, so I ran that version myself against
+the real hosted project instead of waiting: catalog reads, RLS denial on
+`orders`/`discount_codes`/`profiles`, a hidden VIP-drop product, stock not
+writable, and the full guest-checkout security core (`create_order` ignoring
+a client-sent price, idempotency replay via `guest_token`, right/wrong token
+access). **10/10 passed**, then I deleted the one test order it created.
+
+What that couldn't cover: the admin-only RPCs (needs #2 done first) and a
+couple of internal checks that only `verify_phase1.sql` exercises directly
+(concurrent-order locking, the role-self-promotion guard). Those are already
+proven on the *local* stack against the same migrations, so this is
+low-risk — but if you want the belt-and-suspenders version:
+
+You'll need the database password (**Project Settings → Database →
+Connection string**, or reset it there if you don't have it saved) to open a
+direct SQL session — either the dashboard's **SQL Editor**, or `psql`. Paste
+and run:
 
 ```
 supabase/tests/verify_phase1.sql
 ```
 
-It ends with either:
+It reports via `RAISE NOTICE`, which shows in the **Messages/Logs** panel
+below the results grid, not as query rows — that's why your last run showed
+"Success. No rows returned." with no other signal either way. Ends in:
 
 ```
 ================================
@@ -71,9 +98,9 @@ It ends with either:
 ================================
 ```
 
-...or a `FAIL` line with a specific check number.
+...or a `FAIL` line naming a specific check.
 
-**Tell me:** "hosted gate passed" — or paste whatever error/FAIL line you see.
+**Tell me:** nothing required here — treat this one as optional now.
 
 ---
 
@@ -84,35 +111,30 @@ so ours falls back to **5174**. This matters because Supabase's auth
 redirects are allow-listed by URL — `supabase/config.toml` currently only
 lists `5173`.
 
-Pick one:
+✅ Picked **(b)** — I added `http://localhost:5174` to
+`supabase/config.toml`'s `additional_redirect_urls`, so the **local** stack
+now accepts either port.
 
-- **(a)** Stop whatever's using 5173 (check what it is before killing it —
-  `netstat -ano | findstr :5173` on Windows, then `Get-Process -Id <PID>` in
-  PowerShell), or
-- **(b)** Tell me to add `http://localhost:5174` to the redirect allow-list —
-  I can do this one myself, just flagging it so you know why sign-in might
-  fail on the wrong port otherwise.
+⚠️ **One step is still yours.** `config.toml` only governs the local Docker
+stack — it's not something `supabase db push` or any CLI command syncs to the
+hosted project's auth settings. For the **hosted** project, add it by hand:
+**Authentication → URL Configuration → Redirect URLs**, add
+`http://localhost:5174`. Needed before sign-in against the hosted project
+will work from the port we're actually running on.
 
-**Tell me:** which option, or just "leave it, add 5174" and I'll handle it.
+**Tell me:** "done" once added — or if you'd rather free up 5173 instead
+(check what's using it first: `netstat -ano | findstr :5173`, then
+`Get-Process -Id <PID>` in PowerShell), that works too and needs no dashboard
+change.
 
 ---
 
 ## 5. Look at the app in an actual browser
 
-I don't have browser automation in this environment, so nothing has been
-*looked at* yet — only tested programmatically (route mounts, no console
-errors, etc.).
-
-```bash
-npm run dev
-```
-
-Open whatever port it lands on (5173 or 5174), click around. Right now every
-page is a placeholder ("This screen arrives in Phase N") — you're checking
-that the header, mobile nav (resize the window or use dev tools' device mode),
-footer links, and overall look feel right before more gets built on top.
-
-**Tell me:** looks fine — or describe/screenshot anything that looks off.
+✅ **Done, thanks.** No console errors, and "This screen arrives in Phase N"
+on almost every page is exactly the expected state right now — Phase 2 only
+built the shell (header, mobile nav, footer, router, design tokens), not the
+actual screens. Those stub pages get replaced one phase at a time from here.
 
 ---
 
