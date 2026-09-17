@@ -1,6 +1,6 @@
 # KOCHU rebuild — progress
 
-Last updated: 2026-09-17 · Phase 4 of 8 — **storefront read paths, verified** ✅
+Last updated: 2026-09-17 · Phase 6 of 8 — **admin panel, built; DB verification pending** ⚠️
 
 Rebuilding the Next.js 16 / Neon / Drizzle / better-auth storefront in place as a
 pure client-side **Vite + React 19 + Supabase** SPA. Full architecture lives in
@@ -25,6 +25,23 @@ API (not mocked). See [Phase 3 — Auth](#phase-3--auth--account-shell-).
 
 Verification along the way found and fixed genuine defects — see
 [Defects caught by the gate](#defects-caught-by-the-gate).
+
+**Phase 5 (cart + checkout) is done and verified for real** — pushed to the
+hosted project and walked end-to-end: guest COD checkout, stock decrement,
+the bKash/Nagad TrxID flow, and the new Realtime subscription on
+`/account/orders/:id`, all confirmed working by you against
+`tyrubexqizwtxmdtopro`. See
+[Phase 5 — Cart + checkout](#phase-5--cart--checkout-).
+
+**Phase 6 (the admin panel) is now built** — see
+[Phase 6 — Admin panel](#phase-6--admin-panel-️) below. This machine has no
+Docker (established during Phase 5), so this session verified it the same
+way: everything checkable without a database (`tsc -b`, `eslint`, `vitest`,
+`vite build`) is green, but no admin write has actually round-tripped through
+the hosted project yet. Unlike Phase 5, this needs no `.env` change and no
+new `db push` beyond what Phase 5 already did — the hosted project is already
+what `npm run dev` points at. See
+[Still to verify before Phase 6 is done](#still-to-verify-before-phase-6-is-done).
 
 ### Run it yourself
 
@@ -272,6 +289,105 @@ browsing products never read an article — that alone brought it to 580 KB.
 Not chased further: Phase 5 and 6 will reshape the bundle again, and
 Lighthouse performance is explicitly Phase 7's gate.
 
+### Phase 5 — Cart + checkout ✅
+
+Built, typechecked, linted, unit-tested, and then verified for real against
+the hosted project (`tyrubexqizwtxmdtopro`) once `.env` was pointed at it and
+`0010_realtime.sql` was pushed:
+
+1. `supabase db push` applied `0010_realtime.sql` to hosted.
+2. The real CLAUDE.md gate, in a browser against hosted: guest checkout →
+   COD → order landed as `PROCESSING` → stock decremented → the confirmation
+   link worked and a tampered token was rejected → a double-clicked "Place
+   order" produced exactly one order.
+3. The bKash/Nagad path: a submitted TrxID flipped `payment_status` to
+   `AWAITING_VERIFICATION`; approving it by hand in SQL flipped the order to
+   `PAID`/`PROCESSING` and the signed-in `/account/orders/:id` page updated
+   live via the new Realtime subscription, with no manual refresh.
+4. bKash/Nagad merchant numbers set in `store_settings` so the checkout MFS
+   panel shows real numbers, not placeholders.
+
+All confirmed working. Details of what was built: below.
+
+- **`<CartDrawer>`** (`src/features/cart/CartDrawer.tsx`), mounted once in
+  `RootLayout` and opened from anywhere via `useUi().setCartOpen`. Renders the
+  cart store's display snapshot with zero network, then layers live drift
+  warnings on top.
+- **`useCartValidation()`** (`src/features/cart/useCartValidation.ts`) is the
+  only thing that talks to the database for the cart: on every drawer open /
+  checkout mount it re-fetches the live `product_variants` + `products` rows
+  for whatever's in the cart and diffs them against the stored snapshot --
+  `unavailable` (deactivated or product no longer `ACTIVE`) and
+  `out-of-stock` block checkout outright; `price-changed` and `low-stock` are
+  shown inline but don't block, since `create_order()` re-derives the real
+  price and will reject over-ordering itself. 6 unit tests
+  (`useCartValidation.test.tsx`) cover all five branches against a mocked
+  Supabase client.
+- **`CheckoutPage`** (`src/features/checkout/CheckoutPage.tsx`) is guest-first
+  per CLAUDE.md: a signed-out visitor sees an explicit "continue as guest" /
+  "sign in" choice *before* any delivery field, never a wall after typing. A
+  signed-in visitor skips straight to the form, with saved addresses
+  (`getAddresses`) offered as radio picks that prefill the fields, plus "use a
+  new address". Discount code preview (`validate_discount`, doesn't spend a
+  use) and the shipping preview (`shipping_for`) both call the exact same
+  RPCs `create_order()` uses internally, so the number shown here is what
+  actually gets charged barring a race between preview and submit --
+  `create_order()` is still the one source of truth. The idempotency key is
+  `useRef(crypto.randomUUID())`, generated once per mount, not per render or
+  per click -- what makes a double-clicked "Place order" resolve to the one
+  order the Phase 1 gate's replay logic already proves is safe.
+- **`OrderSummaryCard`** (`src/features/checkout/OrderSummaryCard.tsx`) is
+  the one place cart/order lines get rendered as a receipt -- shared verbatim
+  between checkout, the guest confirmation page, and the signed-in order
+  detail page, fed a small normalized `SummaryLine[]` regardless of which of
+  the three different underlying shapes (cart store lines, RPC `order_items`
+  jsonb, or a direct `order_items` table row) it came from.
+- **`MfsPaymentPanel`** (`src/features/checkout/MfsPaymentPanel.tsx`) is the
+  manual bKash/Nagad flow CLAUDE.md's known risks section describes: a QR
+  code (client-side `qrcode`, encoding just the merchant number -- there's no
+  bKash/Nagad payment-URI standard to target) plus the merchant number in
+  text, then a form for the sender's number and the TrxID, submitted via
+  `submit_mfs_transaction()`. Renders again after a rejection (the RPC resets
+  the order to `PENDING_PAYMENT`), so resubmission is just "the panel is back."
+- **`OrderConfirmationPage`** (`/order/:id?token=`, top-level, no auth) is the
+  only thing an anonymous guest ever uses to track an order, exactly the way
+  `get_order_by_token()` was built for. **It polls, not subscribes**: see the
+  Realtime note below.
+- **Account order pages** (`src/features/account/OrdersPage.tsx`,
+  `OrderDetailPage.tsx`) are the signed-in equivalent, reading `orders`
+  directly (`orders_select_own_or_admin` in 0007_rls.sql) instead of through
+  the token RPC. `OrderDetailPage` subscribes to Postgres Changes on its own
+  `orders` row and invalidates the query on any update -- this is the one
+  that's actually live, not polling.
+- **`checkoutErrorMessage()`** (`src/lib/errors.ts`) maps every `raise
+  exception '<CODE>'` string out of `create_order()` and
+  `submit_mfs_transaction()` to real copy, the same pattern
+  `authErrorMessage()` already used for Supabase Auth errors. Unit-tested.
+- **New migration, `0010_realtime.sql`**: adds `orders` to the
+  `supabase_realtime` publication. Nothing before Phase 5 needed Postgres
+  Changes, so nothing had turned it on. No RLS changes -- Realtime enforces
+  the table's existing policy using the connecting role, which is exactly
+  what makes polling the only option for a guest (see below).
+
+**Realtime only covers the signed-in order page, by design, not by gap.**
+`orders_select_own_or_admin` gives `anon` zero rows on `orders` -- that's
+Phase 1 gate check #10, non-negotiable. Realtime authorizes Postgres Changes
+through the same RLS as the connecting role, so an anonymous guest literally
+cannot subscribe to their own order's changes no matter what the publication
+contains. `OrderConfirmationPage` polls every 8s while a payment is
+outstanding instead; `/account/orders/:id` gets the real subscription because
+a signed-in owner's `user_id = auth.uid()` clause actually lets Realtime
+through.
+
+**Gate so far**: 55 tests green (44 prior + 11 new -- `useCartValidation`
+×6, `checkoutErrorMessage` ×2, `formatShippingAddress` ×3), `tsc -b` clean,
+`eslint src` 0 errors (0 warnings beyond the pre-existing shadcn
+fast-refresh ones), production build succeeds. `src/test/shell.test.tsx`'s
+existing route list already covered `/checkout`, `/order/:id`,
+`/account/orders`, and `/account/orders/:id` as stubs since Phase 2; all four
+now render the real pages under a mocked, signed-out, no-network Supabase
+client with zero console errors.
+
 ### Seed data — expanded for real UI testing ✅
 
 The original seed (4 products, 2 drops, 3 articles, 1 discount code) was
@@ -307,6 +423,137 @@ Verified: two full seed runs produce identical row counts (idempotent), and
 anon sees exactly 15 of 19 products — the 4 missing are exactly the
 VIP-gated, archived, draft, and ended-drop ones. Full Phase 1 gate (44
 checks) re-run clean on top of the new data.
+
+### Phase 6 — Admin panel ⚠️
+
+Every screen CLAUDE.md's Phase 6 scope calls for is built: dashboard,
+products + variants + image reorder, collections, drops (+ a scheduler's
+actual job -- publish window fields -- and a VIP grant-access action),
+orders with the status transition table, the **MFS verification queue**,
+articles with update, customers, discounts, and settings. Typechecked,
+linted, and the existing test suite (auth guards, shell smoke test) still
+passes with the real admin panel behind `<RequireAdmin>` instead of the old
+stub. **Not yet exercised against the hosted project** -- see
+[Still to verify before Phase 6 is done](#still-to-verify-before-phase-6-is-done).
+Unlike Phase 5, nothing here needs a new `.env` or a new `db push`: this
+machine's Docker gap (see Phase 5) doesn't block it, since `.env` already
+points at the hosted project and every table Phase 6 writes to
+(`products`, `product_variants`, `product_images`, `collections`, `drops`,
+`articles`, `discount_codes`, `store_settings`, `profiles`) already exists
+there.
+
+- **Data layer is entirely new**: `src/lib/supabase/admin/queries.ts` (reads
+  that don't filter to `ACTIVE`/`published`/`active` the way the
+  customer-facing `queries.ts` deliberately does -- an admin has to see
+  `DRAFT` products and unpublished drops) and
+  `src/lib/supabase/admin/mutations.ts` (plain `.insert()/.update()/.delete()`
+  calls -- every one of these tables is a `for all to authenticated using
+  (is_admin())` policy, not an RPC, confirmed against 0007_rls.sql before
+  writing a line of this). `src/lib/supabase/storage.ts` is a new upload
+  helper (`{bucket}/{entityId}/{uuid}.ext`, since 0008_storage.sql enforces no
+  path convention server-side) plus a signed-URL helper for the one private
+  bucket, `mfs-receipts`. `src/lib/validation/admin.ts` has a zod schema per
+  entity, mirroring the DB's own CHECK constraints client-side (percent
+  1-100, compare-at > price, a drop's window ordering) so those are never the
+  first error an admin sees as a raw Postgres exception.
+- **`AdminLayout`** replaces the Phase 6 stub with a real sidebar (desktop) /
+  horizontal tab bar (narrow) nav across all ten screens.
+- **Every admin screen is its own `React.lazy` chunk**, not just statically
+  imported into `route.tsx` -- caught by a real test failure, not written in
+  up front: the first version statically imported every page (dashboard
+  included) at the top of `route.tsx`, so a non-admin merely visiting `/admin`
+  to be bounced back to `/sign-in` had to fetch and evaluate the *entire*
+  admin bundle first, recharts included, since a dynamic `import()`
+  transitively resolves every static import inside the target module before
+  any of it can render. `auth-guards.test.tsx`'s signed-out-visitor-hits-/admin
+  test started failing on a timeout the moment `DashboardPage` (which imports
+  recharts) was added -- not because the redirect logic changed, but because
+  the redirect couldn't render until a ~400 KB dependency graph loaded first.
+  Splitting every screen into `React.lazy(() => import('./XPage'))` fixed the
+  test and is the actually-correct architecture: confirmed in the production
+  build that `DashboardPage` is its own 396 KB chunk and the shared
+  `route`+`admin` shell a customer bounces through is under 14 KB combined.
+- **Dashboard** (`admin_dashboard_stats()`, already existed from Phase 1/0009,
+  just never had a caller) -- KPI tiles, a single-series revenue line chart
+  (recharts, one hue from `--color-chart-1`, no palette validation needed
+  since it's one series, per the dataviz skill's own scoping), and a low-stock
+  list linking straight to each product's edit page.
+- **MFS verification queue** (`/admin/mfs-queue`) -- CLAUDE.md calls this the
+  highest-value screen, and it's the direct sequel to Phase 5's
+  `submit_mfs_transaction()`: every `SUBMITTED` transaction, the order it
+  belongs to, a signed URL to the receipt screenshot (the one private
+  bucket), and Approve/Reject wired to `verify_mfs_transaction()` behind a
+  confirmation dialog. Reject takes an admin-only note; the customer never
+  sees it (`get_order_by_token()` already stripped `review_note` in Phase 5).
+- **Orders** (`/admin/orders`, `/admin/orders/:id`) -- status-filterable list,
+  and a detail page built entirely from Phase 5's own `OrderSummaryCard`
+  and `formatShippingAddress()` reused verbatim, plus the transition table
+  from `admin_update_order_status()` (`0006_functions.sql`) mirrored exactly
+  as which buttons are even offered, so an admin can't attempt an invalid
+  transition the RPC would just reject anyway.
+- **Products** (`/admin/products`, `/admin/products/new`,
+  `/admin/products/:id`) -- the most complex screen: a dedicated page (not a
+  dialog, given the field count), a `useFieldArray` variants list enforcing
+  "at least one variant, even 'One Size'" the same way the DB schema does,
+  and an image grid with upload / reorder (persisted as `sort_order`
+  updates) / delete, all through the new storage helper.
+- **Collections, drops, articles, discount codes** -- the smaller CRUD
+  screens, all following the same dialog-for-list-entities pattern as
+  Phase 3's `AddressBook`, except articles (a route/page, given the markdown
+  body) and products. Drops additionally get a "Grant access" dialog wired
+  to `grant_drop_access()` for VIP email allowlisting.
+- **Customers** -- a read-only list plus a role-toggle button
+  (`profiles.role`, gated by both `profiles_update_admin` and the
+  `profiles_guard_role` trigger from Phase 1) so promoting a second admin no
+  longer requires the SQL editor. An admin can't demote themselves (the
+  button is hidden on your own row) -- self-promotion is already blocked by
+  the trigger, but self-*demotion* through this UI would just be confusing,
+  not insecure, so it's hidden rather than relied upon as a security control.
+- **Settings** -- one form over the single-row `store_settings` table
+  (shipping thresholds, bKash/Nagad numbers, support contact, announcement),
+  reusing the same public `getStoreSettings()` read Phase 5's checkout page
+  already used.
+- **`adminErrorMessage()`** (`src/lib/errors.ts`) is `checkoutErrorMessage()`'s
+  sibling for the admin-only RPC codes (`FORBIDDEN`, `INVALID_STATUS_TRANSITION`,
+  `TRANSACTION_NOT_FOUND`, `TRANSACTION_ALREADY_REVIEWED`). Unit-tested.
+
+**Gate so far**: 59 tests green (55 prior + 4 new `adminErrorMessage` cases),
+`tsc -b` clean, `eslint src` 0 errors, production build succeeds with the
+admin panel correctly split into ~15 small chunks instead of one large one.
+
+#### Still to verify before Phase 6 is done
+
+All of this needs a real click-through against the hosted project as the
+promoted admin (`sifatbinasad@gmail.com`) -- nothing here has round-tripped
+through Supabase yet:
+
+1. **Products**: create one with two variants and two images, confirm it
+   shows up correctly on `/shop` once its status is `ACTIVE`, reorder the
+   images and confirm the storefront PDP's gallery order actually changed,
+   delete one image and confirm the storage object is actually gone (not
+   just the DB row), delete the product and confirm a past order referencing
+   it (if any) still renders its snapshot correctly.
+2. **MFS queue**: approve one of the pending submissions from Phase 5's own
+   manual test and confirm the customer's `/account/orders/:id` page updates
+   live (this is the Realtime path Phase 5 verified from the customer side;
+   this is the admin side writing the row that triggers it). Reject one and
+   confirm it goes back to `PENDING_PAYMENT` and the customer can resubmit.
+3. **Orders**: walk one order through `PROCESSING → SHIPPED → DELIVERED` with
+   a tracking code, and separately cancel a `PROCESSING` order and confirm
+   stock is actually restored in `product_variants` -- then attempt to
+   cancel it again and confirm nothing double-restores (`stock_released`).
+4. **Collections/drops/articles/discounts**: one create + edit + delete pass
+   each, confirming cover images/featured images actually upload and render,
+   and that a drop's "Grant access" actually lets that emailed customer
+   through the drop's window early.
+5. **Customers**: promote a second account to admin, sign in as it, confirm
+   it can reach `/admin`; demote it back and confirm it's bounced again.
+6. **A non-admin JWT gets `FORBIDDEN` from every admin RPC, over curl against
+   the REST endpoint, not just through the UI** -- this is CLAUDE.md's
+   explicit Phase 6 gate line. `verify_mfs_transaction` and
+   `admin_update_order_status` were already covered by Phase 4's
+   `rest_check.sh` scaffolding pattern; `grant_drop_access` and
+   `admin_dashboard_stats` should be added to that script and re-run.
 
 ---
 
@@ -391,12 +638,12 @@ race-proof. Check 13 was added to cover it.
 
 | Phase | Scope | Est. |
 |---|---|---|
-| **5** | Cart drawer + checkout + MFS QR/TrxID + order confirmation → **first real transaction** | 2.5d |
-| **6** | Admin panel: dashboard, products/variants/images, collections, drops, orders, **MFS verification queue**, articles, customers, discounts, settings | 4d |
+| **5** | Cart drawer + checkout + MFS QR/TrxID + order confirmation → **first real transaction** -- ✅ done, verified against hosted | — |
+| **6** | Admin panel: dashboard, products/variants/images, collections, drops, orders, **MFS verification queue**, articles, customers, discounts, settings -- built, DB-unverified (see above) | — |
 | **7** | Polish: skeletons, error boundaries, 404, `/contact` `/faq` `/shipping`, SEO, Lighthouse ≥90 mobile, a11y, **bundle size** (see Phase 4 note) | 2d |
 | **8** | Cutover: delete `_legacy/`, deploy with SPA rewrite, production redirect URLs, promote admin | 0.5d |
 
-**~9.5 days remaining.**
+**~2.5 days remaining**, once Phase 6's DB verification (above) is done.
 
 Note: `/shop`'s ⌘K instant search over `pg_trgm` (listed in the original plan
 under Phase 4) did not land — the shop page's own search box covers the
@@ -490,6 +737,41 @@ can't push; done by hand per `TODO_HUMAN.md` item 4.
    its own env var names, plus auth components that assume a sign-in wall. This
    project's checkout is guest-first and its admin check is `profiles.role` in
    the database, so the blocks would have to be unpicked rather than adopted.
+16. **The guest order confirmation page polls; only the signed-in account
+   order page subscribes to Realtime.** The plan's line ("order detail pages
+   subscribe to Supabase Realtime") reads as if this were uniform. It can't
+   be: `orders_select_own_or_admin` gives `anon` zero rows on `orders` by
+   design (Phase 1 gate check #10), and Realtime authorizes Postgres Changes
+   through that same RLS using the connecting role. A guest session has no
+   row-level access to subscribe to, token or not. `/order/:id` polls every
+   8s while a payment is outstanding instead; `/account/orders/:id` is the
+   one that actually subscribes, because a signed-in owner's row *is*
+   visible to their own role.
+17. **The whole `/admin` subtree is one react-router `lazy()` boundary
+   (deviation #9), but every screen inside it is its own `React.lazy()`
+   chunk on top of that.** These solve different problems and both turned
+   out necessary. The outer boundary keeps admin code out of the storefront
+   bundle entirely. But a static `import` of every screen at the top of
+   `route.tsx` still meant the entire admin dependency graph -- recharts
+   included -- had to load before `<RequireAdmin>` could even render a
+   redirect, since a dynamic `import()` transitively resolves every module
+   its target statically imports before any of it runs. This wasn't a
+   theoretical concern: `auth-guards.test.tsx`'s signed-out-visitor-hits-`/admin`
+   test started failing on a timeout the moment `DashboardPage` (which
+   imports recharts) existed, purely from the added transform/evaluation
+   weight, with the redirect logic itself unchanged. `React.lazy()` per
+   screen, wrapped in one `<Suspense>` inside the descendant `<Routes>`,
+   fixed it and is confirmed in the production build: `DashboardPage` is its
+   own ~396 KB chunk, and the shared shell a bounced visitor actually
+   downloads is under 14 KB.
+18. **`route.tsx` renders a descendant `<Routes>` rather than routes.tsx
+   listing `/admin`'s children statically.** React Router's `lazy()` cannot
+   itself supply `path`/`children` -- the router needs the full route tree
+   before code-splitting resolves -- so routes.tsx keeps its single
+   `{ path: 'admin/*', lazy: ... }` entry from Phase 2, and `Component`
+   hands off routing for everything under that splat to its own `<Routes>`
+   tree. This is the standard, sanctioned pattern for "lazily load an entire
+   section with its own internal routing," not a workaround.
 
 ---
 
@@ -509,3 +791,8 @@ can't push; done by hand per `TODO_HUMAN.md` item 4.
 - **`db:verify` is a local-only harness.** It shells out to `docker exec` and
   assumes the `supabase_db_kochu-storefront` container. It is a development
   gate, not CI.
+- **Phase 5 was built without Docker available in-session.** Everything
+  static (`tsc -b`, `eslint`, `vitest`, `vite build`) is green, but no RPC has
+  actually been called against a real Postgres since Phase 4. Treat the
+  checkout flow as unverified until someone runs the steps in
+  [Still to verify before Phase 5 is done](#still-to-verify-before-phase-5-is-done).

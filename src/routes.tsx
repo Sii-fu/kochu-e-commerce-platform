@@ -21,6 +21,10 @@ import { DropsPage } from '@/features/drops/DropsPage'
 import { DropDetailPage } from '@/features/drops/DropDetailPage'
 import { EarlyAccessPage } from '@/features/drops/EarlyAccessPage'
 import { ArticlesPage } from '@/features/articles/ArticlesPage'
+import { CheckoutPage } from '@/features/checkout/CheckoutPage'
+import { OrderConfirmationPage } from '@/features/checkout/OrderConfirmationPage'
+import { OrdersPage } from '@/features/account/OrdersPage'
+import { OrderDetailPage } from '@/features/account/OrderDetailPage'
 
 // Each `stub` is replaced by a real module as its phase lands. The routes
 // exist from Phase 2 so navigation, guards and deep links are verifiable
@@ -55,8 +59,8 @@ export const routes = [
       { path: 'articles/:slug', lazy: () => import('@/features/articles/ArticleReader') },
 
       // Checkout. The cart is a drawer, not a route.
-      { path: 'checkout', ...stub('Checkout', 5) },
-      { path: 'order/:id', ...stub('Order confirmation', 5) },
+      { path: 'checkout', element: <CheckoutPage /> },
+      { path: 'order/:id', element: <OrderConfirmationPage /> },
 
       // Account. Guarded by <RequireAuth> as a layout route: a signed-out
       // visitor is bounced to /sign-in?next=/account/... and returned here
@@ -69,8 +73,8 @@ export const routes = [
             element: <AccountLayout />,
             children: [
               { index: true, element: <AccountOverviewPage /> },
-              { path: 'orders', ...stub('My orders', 5) },
-              { path: 'orders/:id', ...stub('Order', 5) },
+              { path: 'orders', element: <OrdersPage /> },
+              { path: 'orders/:id', element: <OrderDetailPage /> },
               { path: 'addresses', element: <AddressBook /> },
               { path: 'profile', element: <ProfileForm /> },
             ],

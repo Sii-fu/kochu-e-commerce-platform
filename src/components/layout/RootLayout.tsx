@@ -1,6 +1,7 @@
 import { Outlet, ScrollRestoration } from 'react-router'
 import { Header } from './Header'
 import { Footer } from './Footer'
+import { CartDrawer } from '@/features/cart/CartDrawer'
 
 export function RootLayout() {
   return (
@@ -19,6 +20,7 @@ export function RootLayout() {
       </main>
 
       <Footer />
+      <CartDrawer />
       <ScrollRestoration />
     </div>
   )

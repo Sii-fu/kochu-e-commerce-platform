@@ -1,4 +1,5 @@
 import { supabase } from './client'
+import type { Database } from './types'
 
 /**
  * Typed read helpers, grouped by feature as the catalog grows. Nothing here
@@ -359,4 +360,135 @@ export async function getAddresses(userId: string) {
 
   if (error) throw error
   return data
+}
+
+/**
+ * The single-row store config -- free shipping threshold, flat shipping
+ * fee, and the bKash/Nagad merchant numbers the checkout MFS panel shows.
+ * Never hardcode any of these; `store_settings_read_all` (0007_rls.sql)
+ * makes this readable by anon so the checkout page can render it before
+ * anyone signs in.
+ */
+export async function getStoreSettings() {
+  const { data, error } = await supabase.from('store_settings').select('*').single()
+  if (error) throw error
+  return data
+}
+
+/**
+ * Live variant + product state for every id currently in the cart, fetched
+ * fresh whenever the drawer opens or checkout mounts. This is the only
+ * thing `useCartValidation()` trusts -- the cart store itself is a display
+ * snapshot that can go stale the moment another customer buys the last one.
+ */
+export async function getVariantsForCart(variantIds: string[]) {
+  if (variantIds.length === 0) return []
+
+  const { data, error } = await supabase
+    .from('product_variants')
+    .select('id, stock, is_active, price_delta_minor, products(price_minor, status)')
+    .in('id', variantIds)
+
+  if (error) throw error
+  return data
+}
+
+/**
+ * Customer-safe columns only -- never admin_note or the idempotency_key.
+ * `guest_token` is included for the account order page's own use with
+ * `submitMfsTransaction`/`MfsPaymentPanel` (which take an id+token pair
+ * either way) -- not a new capability, since the owner reading this row at
+ * all already means RLS has confirmed it's theirs.
+ */
+const ORDER_COLUMNS = `id, order_number, user_id, guest_token, guest_email, customer_name, phone,
+  shipping_address, status, payment_method, payment_status,
+  subtotal_minor, discount_minor, shipping_minor, total_minor, discount_code,
+  tracking_code, courier, placed_at, processing_at, shipped_at, delivered_at,
+  cancelled_at`
+
+export type OrderRecord = {
+  id: string
+  order_number: string
+  user_id: string | null
+  guest_token: string
+  guest_email: string | null
+  customer_name: string
+  phone: string
+  shipping_address: Database['public']['Tables']['orders']['Row']['shipping_address']
+  status: Database['public']['Enums']['order_status']
+  payment_method: Database['public']['Enums']['payment_method']
+  payment_status: Database['public']['Enums']['payment_status']
+  subtotal_minor: number
+  discount_minor: number
+  shipping_minor: number
+  total_minor: number
+  discount_code: string | null
+  tracking_code: string | null
+  courier: string | null
+  placed_at: string
+  processing_at: string | null
+  shipped_at: string | null
+  delivered_at: string | null
+  cancelled_at: string | null
+}
+
+export type OrderItemRecord = {
+  id: string
+  product_name: string
+  variant_label: string
+  image_path: string | null
+  unit_price_minor: number
+  quantity: number
+  line_total_minor: number
+}
+
+export type MfsPaymentRecord = {
+  id: string
+  provider: Database['public']['Enums']['payment_method']
+  trx_id: string
+  sender_msisdn: string
+  amount_minor: number
+  status: Database['public']['Enums']['mfs_status']
+  created_at: string
+} | null
+
+export type OrderDetail = {
+  order: OrderRecord
+  items: OrderItemRecord[]
+  payment: MfsPaymentRecord
+}
+
+/** A signed-in customer's own order list. `orders_select_own_or_admin` (0007_rls.sql) is the real gate. */
+export async function getUserOrders(userId: string) {
+  const { data, error } = await supabase
+    .from('orders')
+    .select('id, order_number, status, payment_method, payment_status, total_minor, placed_at')
+    .eq('user_id', userId)
+    .order('placed_at', { ascending: false })
+
+  if (error) throw error
+  return data
+}
+
+/**
+ * A single order, for a signed-in owner. The `.eq('user_id', userId)` is
+ * belt-and-suspenders on top of RLS: it's what turns "some other customer's
+ * order id in the URL" into a clean not-found instead of relying solely on
+ * the policy to reject it.
+ */
+export async function getUserOrderById(userId: string, orderId: string): Promise<OrderDetail> {
+  const { data, error } = await supabase
+    .from('orders')
+    .select(`${ORDER_COLUMNS}, order_items(*), mfs_transactions(id, provider, trx_id, sender_msisdn, amount_minor, status, created_at)`)
+    .eq('id', orderId)
+    .eq('user_id', userId)
+    .single()
+
+  if (error) throw error
+
+  const { order_items, mfs_transactions, ...order } = data
+  const payment =
+    [...mfs_transactions].sort((a, b) => b.created_at.localeCompare(a.created_at))[0] ?? null
+
+  return { order: order as OrderRecord, items: order_items, payment }
 }

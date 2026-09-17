@@ -1,5 +1,6 @@
 import { supabase } from './client'
 import type { Database } from './types'
+import type { OrderDetail } from './queries'
 
 /**
  * Typed wrappers for every SECURITY DEFINER function in
@@ -39,13 +40,14 @@ export async function validateDiscount(code: string, subtotalMinor: number) {
   }
 }
 
-export async function getOrderByToken(orderId: string, token: string) {
+/** The only path an anonymous visitor reads an order -- id + the secret guest_token. */
+export async function getOrderByToken(orderId: string, token: string): Promise<OrderDetail> {
   const { data, error } = await supabase.rpc('get_order_by_token', {
     p_order_id: orderId,
     p_token: token,
   })
   if (error) throw error
-  return data
+  return data as unknown as OrderDetail
 }
 
 export async function submitMfsTransaction(args: {
@@ -96,10 +98,10 @@ export async function adminUpdateOrderStatus(args: {
   return data as { order_id: string; status: string }
 }
 
-export async function shippingFor(subtotalMinor: number) {
+export async function shippingFor(subtotalMinor: number): Promise<number> {
   const { data, error } = await supabase.rpc('shipping_for', { p_subtotal_minor: subtotalMinor })
   if (error) throw error
-  return data
+  return data as unknown as number
 }
 
 export async function grantDropAccess(dropId: string, emails: string[]) {
@@ -109,6 +111,34 @@ export async function grantDropAccess(dropId: string, emails: string[]) {
   })
   if (error) throw error
   return data
+}
+
+export type AdminDashboardStats = {
+  revenue_minor: number
+  revenue_period_minor: number
+  orders_total: number
+  orders_period: number
+  orders_open: number
+  orders_delivered: number
+  orders_cancelled: number
+  awaiting_verification: number
+  customers: number
+  early_access: number
+  low_stock: {
+    variant_id: string
+    product_id: string
+    product_name: string
+    variant_label: string
+    slug: string
+    stock: number
+  }[]
+  revenue_series: { day: string; revenue_minor: number; orders: number }[]
+}
+
+export async function adminDashboardStats(days = 30): Promise<AdminDashboardStats> {
+  const { data, error } = await supabase.rpc('admin_dashboard_stats', { p_days: days })
+  if (error) throw error
+  return data as unknown as AdminDashboardStats
 }
 
 export async function redeemDropKey(dropId: string, key: string) {
