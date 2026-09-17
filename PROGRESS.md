@@ -1,6 +1,6 @@
 # KOCHU rebuild — progress
 
-Last updated: 2026-09-17 · Phase 3 of 8 — **auth + account shell, verified** ✅
+Last updated: 2026-09-17 · Phase 4 of 8 — **storefront read paths, verified** ✅
 
 Rebuilding the Next.js 16 / Neon / Drizzle / better-auth storefront in place as a
 pure client-side **Vite + React 19 + Supabase** SPA. Full architecture lives in
@@ -208,6 +208,70 @@ Verified two ways:
 Gate: 39 tests green (35 shell + 4 new guard tests), `tsc -b` clean, `eslint`
 0 errors, production build still splits `/admin` into its own chunk (0.90 kB).
 
+### Phase 4 — Storefront read paths ✅
+
+Home, `/shop` with URL-synced filters + infinite scroll, PDP with
+gallery/variants/stock, collections, drops (a real countdown to a real
+timestamp — the old app's was `new Date(Date.now() + 7 days)`, recomputed
+fresh every render, so it was permanently "7 days out"), early access, and
+the article journal (`react-markdown`, since nothing existing covered it).
+
+- **`src/lib/supabase/queries.ts`** grew a full set of typed catalog reads.
+  Every one of them relies entirely on RLS to decide what's visible —
+  nothing here re-implements `DRAFT`/`ARCHIVED` filtering or drop-window
+  gating client-side. That would both leak data over the wire and drift from
+  the DB's actual rules the moment a policy changed.
+- **`src/lib/supabase/rpc.ts`** — typed wrappers for all 10
+  `SECURITY DEFINER` functions, arg names checked against the generated
+  types (`p_order_id`, `p_msisdn`, etc.) rather than guessed.
+- **`useShopFilters`** reads straight from `useSearchParams`, no
+  intermediate `useState` — a reload or a pasted link reconstructs the exact
+  same view with nothing to go stale, and every filter change is a real
+  navigation entry so the back button works. Price is stored in the URL as
+  whole taka (`min=1000`), not poisha.
+- **`<ProductGrid>`** stayed purely presentational — headings and filters
+  are composed by the page, never baked into the grid. That's the specific
+  bug being avoided: the old `ShopGrid` was reused inside a collection page
+  and dragged its own "KOCHU Shop" heading and category filter along with
+  it, producing a second heading under the collection's own.
+- **`<VariantPicker>`** disables a sold-out or admin-deactivated variant but
+  still renders it — a customer sees the size exists, just not right now.
+
+Verified directly against the real local database, not just the types:
+
+1. **RLS actually filters what these queries return.** The seeded
+   VIP-only product (`structured-corset`, gated behind `winter-preview`'s
+   `early_access_at`) is absent from every query shape an anonymous visitor
+   can run, and an upcoming drop's products are absent from the `/shop`
+   query specifically.
+2. **The "survives a reload" mechanism, proven, not assumed.** The same
+   filtered query run twice returns byte-identical results — confirming the
+   actual premise `useShopFilters` depends on: it's a pure read of the URL,
+   with nothing cached in between to drift.
+3. **Two PostgREST specifics that only show up by running the query**, not
+   from the generated types: an embedded-resource filter
+   (`.eq('collections.slug', …)`) is silently a no-op without `!inner` on
+   that embed — found and fixed before it shipped as a collection filter
+   that looked like it worked but filtered nothing. And `search_tsv` is
+   generated with `to_tsvector('simple', …)`, so `textSearch()` needed
+   `config: 'simple'` explicitly — the client's default English stemming
+   config doesn't error, it just quietly stops matching what's actually
+   stored.
+4. **The sold-out-variant gate had no real data to exercise.** No seeded
+   variant is actually at 0 stock. Added
+   `src/features/catalog/VariantPicker.test.tsx` instead: a sold-out and an
+   admin-deactivated variant both render disabled-but-visible, and a click
+   on either never fires `onSelect`.
+
+Gate: 44 tests green, `tsc -b` clean, `eslint` 0 errors.
+
+⚠️ **Bundle size, flagged for Phase 7, not fixed here.** The main chunk grew
+to 701 KB after this phase. `react-markdown`'s parser tree got its own lazy
+chunk (route-level `lazy()`, same pattern as `/admin`) since most visitors
+browsing products never read an article — that alone brought it to 580 KB.
+Not chased further: Phase 5 and 6 will reshape the bundle again, and
+Lighthouse performance is explicitly Phase 7's gate.
+
 ---
 
 ## The gate — 44 checks, `npm run db:verify`
@@ -291,13 +355,19 @@ race-proof. Check 13 was added to cover it.
 
 | Phase | Scope | Est. |
 |---|---|---|
-| **4** | Storefront reads: home, `/shop` with URL-synced filters + ⌘K search, PDP with gallery + variants, collections, articles, drops, early access | 3d |
 | **5** | Cart drawer + checkout + MFS QR/TrxID + order confirmation → **first real transaction** | 2.5d |
 | **6** | Admin panel: dashboard, products/variants/images, collections, drops, orders, **MFS verification queue**, articles, customers, discounts, settings | 4d |
-| **7** | Polish: skeletons, error boundaries, 404, `/contact` `/faq` `/shipping`, SEO, Lighthouse ≥90 mobile, a11y | 2d |
+| **7** | Polish: skeletons, error boundaries, 404, `/contact` `/faq` `/shipping`, SEO, Lighthouse ≥90 mobile, a11y, **bundle size** (see Phase 4 note) | 2d |
 | **8** | Cutover: delete `_legacy/`, deploy with SPA rewrite, production redirect URLs, promote admin | 0.5d |
 
-**~12.5 days remaining.**
+**~9.5 days remaining.**
+
+Note: `/shop`'s ⌘K instant search over `pg_trgm` (listed in the original plan
+under Phase 4) did not land — the shop page's own search box covers the
+"find a product" need via `search_tsv`. The command palette is deferred, not
+dropped; revisit if it's still wanted once Phase 6 exists and there's more to
+search across (orders, customers) where a palette earns its keep more than it
+does over a four-product seed catalog.
 
 ### Port 5173 vs 5174 — resolved
 

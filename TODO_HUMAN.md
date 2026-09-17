@@ -51,6 +51,8 @@ Nothing is currently blocking Phase 4.
 
 ## What's next
 
-Phase 4 (storefront browsing — home, shop, product pages, collections, drops,
-articles) doesn't need anything from you to start. I'll flag here if that
-changes.
+Phase 4 (storefront browsing) is done — 44 tests green, verified against the
+real local database. Worth 5-10 minutes with `npm run dev` when you get a
+chance: browse `/shop`, filter by category/price, open a product, check
+`/drops`, `/collections`, `/articles`. Nothing's blocking Phase 5 (cart +
+checkout — the first real transaction) either way; I'll start it now.
