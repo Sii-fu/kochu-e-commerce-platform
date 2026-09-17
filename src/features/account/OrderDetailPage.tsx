@@ -21,14 +21,17 @@ import { formatShippingAddress } from '@/features/checkout/shippingAddress'
  */
 export function OrderDetailPage() {
   const { id } = useParams<{ id: string }>()
-  const { session } = useSession()
-  const userId = session!.user.id
+  // Not `session!.user.id` -- this mounts its own independent useSession()
+  // call, separate from the one <RequireAuth> already resolved, so `session`
+  // starts out null here even for an already-signed-in visitor.
+  const { session, loading: sessionLoading } = useSession()
+  const userId = session?.user.id
   const queryClient = useQueryClient()
 
   const query = useQuery({
     queryKey: ['user-order', userId, id],
-    queryFn: () => getUserOrderById(userId, id!),
-    enabled: !!id,
+    queryFn: () => getUserOrderById(userId as string, id as string),
+    enabled: !!id && !!userId,
   })
 
   useEffect(() => {
@@ -53,7 +56,7 @@ export function OrderDetailPage() {
     queryFn: getStoreSettings,
   })
 
-  if (query.isLoading) {
+  if (sessionLoading || query.isLoading) {
     return (
       <div className="space-y-3">
         <Skeleton className="h-8 w-40" />

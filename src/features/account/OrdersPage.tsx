@@ -11,15 +11,19 @@ import { EmptyState } from '@/components/common/EmptyState'
 import { ErrorState } from '@/components/common/ErrorState'
 
 export function OrdersPage() {
-  const { session } = useSession()
-  const userId = session!.user.id
+  // Not `session!.user.id` -- this mounts its own independent useSession()
+  // call, separate from the one <RequireAuth> already resolved, so `session`
+  // starts out null here even for an already-signed-in visitor.
+  const { session, loading: sessionLoading } = useSession()
+  const userId = session?.user.id
 
   const { data: orders, isLoading, isError, refetch } = useQuery({
     queryKey: ['user-orders', userId],
-    queryFn: () => getUserOrders(userId),
+    queryFn: () => getUserOrders(userId as string),
+    enabled: !!userId,
   })
 
-  if (isLoading) {
+  if (sessionLoading || isLoading) {
     return (
       <div className="space-y-3">
         <Skeleton className="h-20 w-full" />

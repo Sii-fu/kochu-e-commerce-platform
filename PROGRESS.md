@@ -517,9 +517,40 @@ there.
   sibling for the admin-only RPC codes (`FORBIDDEN`, `INVALID_STATUS_TRANSITION`,
   `TRANSACTION_NOT_FOUND`, `TRANSACTION_ALREADY_REVIEWED`). Unit-tested.
 
-**Gate so far**: 59 tests green (55 prior + 4 new `adminErrorMessage` cases),
-`tsc -b` clean, `eslint src` 0 errors, production build succeeds with the
-admin panel correctly split into ~15 small chunks instead of one large one.
+**Gate so far**: 61 tests green (55 prior + 4 `adminErrorMessage` cases + 2
+regression tests below), `tsc -b` clean, `eslint src` 0 errors, production
+build succeeds with the admin panel correctly split into ~15 small chunks
+instead of one large one.
+
+#### Defects found on your first real click-through
+
+1. **`session!.user.id` crashed `/account/addresses` and `/account/orders`
+   for every real signed-in visitor.** `<RequireAuth>` already resolves a
+   session before rendering its children, but `AddressBook`, the account
+   `OrdersPage`, and the account `OrderDetailPage` each mount their *own*
+   independent `useSession()` call -- a fresh `getSession()` round-trip with
+   its own `{session: null, loading: true}` initial state -- so asserting
+   `session!.user.id` non-null crashed on the very first render, every time,
+   regardless of what the guard upstream already knew. `ProfileForm.tsx`
+   (Phase 3) had already solved this correctly -- `session?.user.email` for
+   render, `session!.user.id` only inside a deferred `mutationFn` closure --
+   but `AddressBook.tsx` (also Phase 3) had the same bug this whole time and
+   nothing had ever exercised it in a real browser with a real session before
+   now. Fixed all three the same way: `session?.user.id`, `enabled: !!userId`
+   on the query, an explicit `sessionLoading` check before the `isLoading`
+   skeleton returns. `shell.test.tsx` never caught this because it only ever
+   renders these routes signed out, where `<RequireAuth>` redirects before
+   the page body mounts -- added
+   `src/test/account-session-crash.test.tsx` (2 tests, signed-in this time)
+   so it can't regress silently again.
+2. **No filters on `/admin/products`.** Added a name search plus status and
+   category filters, client-side (the product list isn't paginated, and the
+   seed catalog is small enough that this doesn't need a server round trip).
+3. **MFS queue Approve/Reject not doing anything, under investigation** --
+   see the note in `TODO_HUMAN.md`. Nothing surfaced by reading the code
+   against `verify_mfs_transaction()`'s signature and grants; needs a repro
+   detail (does the confirmation dialog open? any toast or console error on
+   Confirm?) that only shows up in the browser.
 
 #### Still to verify before Phase 6 is done
 

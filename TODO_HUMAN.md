@@ -61,6 +61,16 @@ The good news: unlike Phase 5, this needs no new `.env` change and no new
 the admin panel writes to already exists there. This is purely a "click
 through it as the admin account" pass:
 
+**Still open: MFS queue Approve/Reject.** You reported clicking Approve or
+Reject on `/admin/mfs-queue` doesn't do anything. I read `MfsQueuePage.tsx`
+against `verify_mfs_transaction()`'s actual signature and grants and found
+nothing wrong on paper — I need what only shows up in the browser: does the
+confirmation dialog (title "Approve this payment?") open at all when you
+click Approve? If it opens and you click Confirm, is there a toast (success
+or error)? Anything in the browser console (F12 → Console) when you click
+either button? That'll tell me whether this is the dialog not opening, the
+RPC call failing, or something else.
+
 1. **Products** (`/admin/products/new`): create one with two variants and
    two images, set it `ACTIVE`, confirm it shows up on `/shop` and its
    gallery order matches what you set. Delete an image and confirm it's

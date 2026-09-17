@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -8,10 +9,13 @@ import { formatBDT } from '@/lib/money'
 import { ProductImage } from '@/components/common/ProductImage'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
+import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/common/EmptyState'
 import { ErrorState } from '@/components/common/ErrorState'
+import type { Database } from '@/lib/supabase/types'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -30,12 +34,36 @@ const STATUS_VARIANT = {
   ARCHIVED: 'secondary',
 } as const
 
+type ProductStatus = Database['public']['Enums']['product_status']
+
+const ALL = '__all__'
+
 export function ProductsListPage() {
   const queryClient = useQueryClient()
   const { data: products, isLoading, isError, refetch } = useQuery({
     queryKey: ['admin-products'],
     queryFn: getAdminProducts,
   })
+
+  const [search, setSearch] = useState('')
+  const [status, setStatus] = useState<ProductStatus | typeof ALL>(ALL)
+  const [category, setCategory] = useState<string>(ALL)
+
+  const categories = useMemo(
+    () => [...new Set((products ?? []).map((p) => p.category))].sort(),
+    [products],
+  )
+
+  const filtered = useMemo(() => {
+    if (!products) return []
+    const term = search.trim().toLowerCase()
+    return products.filter((p) => {
+      if (status !== ALL && p.status !== status) return false
+      if (category !== ALL && p.category !== category) return false
+      if (term && !p.name.toLowerCase().includes(term)) return false
+      return true
+    })
+  }, [products, search, status, category])
 
   const remove = useMutation({
     mutationFn: deleteProduct,
@@ -57,6 +85,41 @@ export function ProductsListPage() {
         </Button>
       </div>
 
+      {!isLoading && !isError && !!products?.length && (
+        <div className="flex flex-wrap gap-2">
+          <Input
+            placeholder="Search by name…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full sm:w-56"
+          />
+          <Select value={status} onValueChange={(v) => setStatus(v as ProductStatus | typeof ALL)}>
+            <SelectTrigger className="w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>All statuses</SelectItem>
+              <SelectItem value="DRAFT">Draft</SelectItem>
+              <SelectItem value="ACTIVE">Active</SelectItem>
+              <SelectItem value="ARCHIVED">Archived</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={category} onValueChange={setCategory}>
+            <SelectTrigger className="w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL}>All categories</SelectItem>
+              {categories.map((c) => (
+                <SelectItem key={c} value={c}>
+                  {c}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
       {isLoading ? (
         <Skeleton className="h-96 w-full" />
       ) : isError ? (
@@ -72,6 +135,8 @@ export function ProductsListPage() {
             </Button>
           }
         />
+      ) : filtered.length === 0 ? (
+        <EmptyState title="No products match" description="Try a different search or filter." />
       ) : (
         <div className="overflow-x-auto rounded-md border">
           <Table>
@@ -86,7 +151,7 @@ export function ProductsListPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {products.map((product) => (
+              {filtered.map((product) => (
                 <TableRow key={product.id}>
                   <TableCell>
                     <Link to={`/admin/products/${product.id}`} className="flex items-center gap-3">

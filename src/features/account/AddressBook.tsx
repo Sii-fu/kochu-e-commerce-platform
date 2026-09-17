@@ -31,20 +31,26 @@ import { EmptyState } from '@/components/common/EmptyState'
 import { AddressForm } from './AddressForm'
 
 export function AddressBook() {
-  const { session } = useSession()
-  const userId = session!.user.id
+  // Not `session!.user.id` -- this component mounts its own independent
+  // useSession() call (a fresh getSession() round-trip), separate from the
+  // one <RequireAuth> already resolved, so `session` starts out null here
+  // even for an already-signed-in visitor. Asserting it non-null crashed the
+  // whole route on first render, every time.
+  const { session, loading: sessionLoading } = useSession()
+  const userId = session?.user.id
   const queryClient = useQueryClient()
   const [editing, setEditing] = useState<Tables<'addresses'> | 'new' | null>(null)
 
   const { data: addresses, isLoading } = useQuery({
     queryKey: ['addresses', userId],
-    queryFn: () => getAddresses(userId),
+    queryFn: () => getAddresses(userId as string),
+    enabled: !!userId,
   })
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['addresses', userId] })
 
   const createMutation = useMutation({
-    mutationFn: (input: AddressInput) => createAddress(userId, input),
+    mutationFn: (input: AddressInput) => createAddress(userId as string, input),
     onSuccess: () => {
       toast.success('Address added')
       setEditing(null)
@@ -55,7 +61,7 @@ export function AddressBook() {
 
   const updateMutation = useMutation({
     mutationFn: (input: AddressInput) =>
-      updateAddress((editing as Tables<'addresses'>).id, userId, input),
+      updateAddress((editing as Tables<'addresses'>).id, userId as string, input),
     onSuccess: () => {
       toast.success('Address updated')
       setEditing(null)
@@ -73,7 +79,7 @@ export function AddressBook() {
     onError: () => toast.error('Could not remove that address. Try again.'),
   })
 
-  if (isLoading) {
+  if (sessionLoading || isLoading) {
     return (
       <div className="space-y-3">
         <Skeleton className="h-24 w-full" />
