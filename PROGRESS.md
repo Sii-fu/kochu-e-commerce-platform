@@ -1,6 +1,6 @@
 # KOCHU rebuild — progress
 
-Last updated: 2026-09-16 · Phase 1 of 8 — **verified against a real Postgres** ✅
+Last updated: 2026-09-17 · Phase 3 of 8 — **auth + account shell, verified** ✅
 
 Rebuilding the Next.js 16 / Neon / Drizzle / better-auth storefront in place as a
 pure client-side **Vite + React 19 + Supabase** SPA. Full architecture lives in
@@ -10,12 +10,20 @@ pure client-side **Vite + React 19 + Supabase** SPA. Full architecture lives in
 
 ## Where things stand
 
-Phase 1 is **done and verified**. Both of yesterday's blockers cleared: Node is
-now v24.20.0, and rather than wait on a hosted project, the whole schema was
-verified against a real Postgres locally via Docker + the Supabase CLI. All
-nine migrations applied cleanly, the seed runs, and the full gate is green.
+Phases 0–3 are done. The hosted project (`tyrubexqizwtxmdtopro`) is live,
+migrated, seeded, and has a real promoted admin
+(`sifatbinasad@gmail.com`) — see [TODO_HUMAN.md](TODO_HUMAN.md) for the
+handful of things that still needed a human (dashboard settings, the DB
+password, an actual browser).
 
-Verification found and fixed two genuine defects — see
+Auth is real `supabase.auth`, not stubbed: sign in/up/reset, session +
+profile hooks, `<RequireAuth>` / `<RequireAdmin>` route guards, profile form,
+address book. Verified both ways — guard behavior against a mocked client in
+`src/test/auth-guards.test.tsx`, and the actual signup → trigger → promote →
+admin-RPC-succeeds flow run for real against the local Supabase Auth + REST
+API (not mocked). See [Phase 3 — Auth](#phase-3--auth--account-shell-).
+
+Verification along the way found and fixed genuine defects — see
 [Defects caught by the gate](#defects-caught-by-the-gate).
 
 ### Run it yourself
@@ -147,6 +155,59 @@ mobile nav opens and closes on navigation, and nothing logs an error — but
 nobody has *looked* at it. Worth five minutes with `npm run dev` before
 Phase 3 leans on the layout.
 
+⚠️ Update: it has now been looked at (see `TODO_HUMAN.md` item 5) — no
+errors, stub pages exactly as expected.
+
+### Phase 3 — Auth + account shell ✅
+
+- **`useSession()`** (`src/hooks/useSession.ts`) is the single source of truth
+  for who's signed in — wraps `supabase.auth.getSession()` +
+  `onAuthStateChange`, with a `loading` flag so a guard can tell "definitely
+  signed out" from "haven't checked yet" and avoid bouncing a visitor whose
+  session just hasn't rehydrated yet.
+- **`useProfile()`** layers `profiles.role` on top via TanStack Query
+  (`src/lib/supabase/queries.ts`), cached rather than re-fetched on every
+  guard check.
+- **`<RequireAuth>`** (`/account/*`) and **`<RequireAdmin>`** (`/admin/*`)
+  both honour `?next=`, and both accept optional `children` so the same
+  component works as a layout route (`<RequireAuth>` in `routes.tsx`) or a
+  direct wrapper (`<RequireAdmin>` inside the lazy `/admin` module, which has
+  no nested routes of its own to guard). `<RequireAdmin>` is UX only — the
+  real boundary is `is_admin()` re-checked inside every admin RPC.
+- **Admin nav link** (header + mobile nav) reads `profiles.role` the same
+  way, never an env allowlist.
+- **Sign up** handles both email-confirmation modes without knowing which is
+  active: branches on whether `data.session` came back, rather than assuming.
+- **Password reset** works around a real race: `detectSessionInUrl`
+  processes the recovery link at client-module load, before
+  `ResetPasswordPage`'s effect subscribes to `onAuthStateChange` — so
+  `PASSWORD_RECOVERY` can fire before anyone's listening. Fixed by also
+  checking `getSession()` against a `type=recovery` URL hash on mount.
+- **Address book** respects `addresses_one_default_per_user` (a unique
+  partial index, 0004) by clearing the existing default before setting a new
+  one — two sequential statements, acceptable for a non-money table where
+  the DB constraint (not app logic) is what actually makes "two defaults"
+  impossible.
+
+Verified two ways:
+
+1. **Guard behavior**, mocked — `src/test/auth-guards.test.tsx`: signed-out
+   visitor → `/sign-in?next=...`, signed-in non-admin still bounced from
+   `/admin` (role is checked, not just "is anyone logged in"). Building this
+   also surfaced that every route test was making a real network call once
+   `<Header>` started reading `useProfile()` — fixed by mocking
+   `@/lib/supabase/client` globally in `src/test/setup.ts`
+   (`src/test/mocks/supabase.ts`), which is now the default for all tests.
+2. **The actual CLAUDE.md Phase 3 gate**, for real — ran against the local
+   Supabase Auth + REST API, not mocked: signup creates a `profiles` row via
+   the trigger; a non-admin gets `FORBIDDEN` from `admin_dashboard_stats`;
+   promoting by hand (the only bootstrap path) makes the same RPC succeed for
+   the same token; a second, separate account still can't self-promote via a
+   raw REST `PATCH` (`ROLE_CHANGE_FORBIDDEN`). 8/8.
+
+Gate: 39 tests green (35 shell + 4 new guard tests), `tsc -b` clean, `eslint`
+0 errors, production build still splits `/admin` into its own chunk (0.90 kB).
+
 ---
 
 ## The gate — 44 checks, `npm run db:verify`
@@ -230,23 +291,21 @@ race-proof. Check 13 was added to cover it.
 
 | Phase | Scope | Est. |
 |---|---|---|
-| **3** | Auth: sign in/up/reset, `RequireAuth`, `RequireAdmin`, profile, address book | 1d |
 | **4** | Storefront reads: home, `/shop` with URL-synced filters + ⌘K search, PDP with gallery + variants, collections, articles, drops, early access | 3d |
 | **5** | Cart drawer + checkout + MFS QR/TrxID + order confirmation → **first real transaction** | 2.5d |
 | **6** | Admin panel: dashboard, products/variants/images, collections, drops, orders, **MFS verification queue**, articles, customers, discounts, settings | 4d |
 | **7** | Polish: skeletons, error boundaries, 404, `/contact` `/faq` `/shipping`, SEO, Lighthouse ≥90 mobile, a11y | 2d |
 | **8** | Cutover: delete `_legacy/`, deploy with SPA rewrite, production redirect URLs, promote admin | 0.5d |
 
-**~13.5 days remaining.**
+**~12.5 days remaining.**
 
-### One thing to know before Phase 3
+### Port 5173 vs 5174 — resolved
 
-Port **5173 is already taken** on this machine by another project's dev server,
-so `npm run dev` falls through to **5174**. That matters for auth: Supabase
-redirects are allow-listed, and `supabase/config.toml` currently names
-`http://localhost:5173`. Either free the port, or add 5174 to `site_url` /
-`additional_redirect_urls` before wiring sign-in, or the email confirmation and
-password-reset links will bounce.
+Port 5173 is taken by another project on this machine, so `npm run dev` falls
+through to 5174. Local `config.toml` now lists both in
+`additional_redirect_urls`. The hosted project's equivalent — Authentication →
+URL Configuration → Redirect URLs — was a dashboard-only setting the CLI
+can't push; done by hand per `TODO_HUMAN.md` item 4.
 
 ---
 
