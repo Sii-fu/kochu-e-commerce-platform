@@ -5,6 +5,36 @@ to see, or a browser. Everything else I can keep doing on my own.
 
 ---
 
+## Deploying to Vercel (early hosting, ahead of the formal Phase 8 cutover)
+
+You chose the GitHub-integration route. `vercel.json` is pushed (SPA
+rewrite -- without it, a direct link like `/product/some-slug` 404s on
+static hosting). Steps, all in the Vercel dashboard:
+
+1. **New Project → Import** `Sii-fu/kochu-e-commerce-platform`. Vercel
+   should auto-detect the Vite preset; `vercel.json` already pins the build
+   command (`npm run build`) and output directory (`dist`) either way.
+2. **Environment Variables**, before the first deploy -- Vite bakes these in
+   at build time, so they must be set in the project, not just locally:
+   - `VITE_SUPABASE_URL` = `https://tyrubexqizwtxmdtopro.supabase.co`
+   - `VITE_SUPABASE_PUBLISHABLE_KEY` = `sb_publishable_QwzvYZqhQnsDoA44vUoPHA_4EAUjb0m`
+   Both are public by design (CLAUDE.md invariant 5) -- same two values
+   already in your local `.env`. Apply to all three environments
+   (Production/Preview/Development) so preview deploys work too.
+3. **Deploy.** You'll get a `*.vercel.app` production URL.
+4. **Add that URL to Supabase** (Authentication → URL Configuration, same
+   place `localhost:5174` was added in Phase 3):
+   - **Site URL**: your production Vercel URL.
+   - **Redirect URLs**: add `https://<your-domain>.vercel.app/**` (wildcard
+     -- sign-up confirmation and password-reset links both redirect to a
+     path under this origin, via `window.location.origin` at request time).
+   Until this is added, sign-up confirmation and "forgot password" emails
+   will link back to a URL Supabase rejects.
+   - Preview-deploy URLs (per-branch/PR) won't have working auth redirects
+     unless added too, since each gets its own unique domain -- not worth
+     chasing down for a "host it for now" pass; the production URL is what
+     matters here.
+
 ## ✅ All clear as of Phase 3
 
 Everything below this line is done:
