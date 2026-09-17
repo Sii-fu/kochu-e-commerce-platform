@@ -76,3 +76,18 @@ export async function deleteAddress(id: string) {
   const { error } = await supabase.from('addresses').delete().eq('id', id)
   if (error) throw error
 }
+
+/** Public signup -- early_access_insert_public in 0007_rls.sql allows this
+ * for anon and authenticated alike. unique(email) handles a repeat signup. */
+export async function joinEarlyAccess(email: string, dropId?: string) {
+  const { error } = await supabase
+    .from('early_access')
+    .insert({ email, drop_id: dropId ?? null, source: 'early-access-page' })
+
+  if (error) {
+    // 23505 = unique_violation on email. Not a real failure from the
+    // visitor's point of view -- they're already on the list.
+    if (error.code === '23505') return
+    throw error
+  }
+}

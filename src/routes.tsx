@@ -12,6 +12,15 @@ import { AccountLayout } from '@/features/account/AccountLayout'
 import { AccountOverviewPage } from '@/features/account/AccountOverviewPage'
 import { AddressBook } from '@/features/account/AddressBook'
 import { ProfileForm } from '@/features/account/ProfileForm'
+import { HomePage } from '@/features/home/HomePage'
+import { ShopPage } from '@/features/catalog/ShopPage'
+import { ProductPage } from '@/features/catalog/ProductPage'
+import { CollectionsPage } from '@/features/catalog/CollectionsPage'
+import { CollectionDetailPage } from '@/features/catalog/CollectionDetailPage'
+import { DropsPage } from '@/features/drops/DropsPage'
+import { DropDetailPage } from '@/features/drops/DropDetailPage'
+import { EarlyAccessPage } from '@/features/drops/EarlyAccessPage'
+import { ArticlesPage } from '@/features/articles/ArticlesPage'
 
 // Each `stub` is replaced by a real module as its phase lands. The routes
 // exist from Phase 2 so navigation, guards and deep links are verifiable
@@ -26,22 +35,24 @@ export const routes = [
     element: <RootLayout />,
     errorElement: <RouteError />,
     children: [
-      { index: true, ...stub('Home', 4) },
+      { index: true, element: <HomePage /> },
 
       // Catalog
-      { path: 'shop', ...stub('Shop', 4) },
-      { path: 'product/:slug', ...stub('Product', 4) },
-      { path: 'collections', ...stub('Collections', 4) },
-      { path: 'collections/:slug', ...stub('Collection', 4) },
+      { path: 'shop', element: <ShopPage /> },
+      { path: 'product/:slug', element: <ProductPage /> },
+      { path: 'collections', element: <CollectionsPage /> },
+      { path: 'collections/:slug', element: <CollectionDetailPage /> },
 
       // Drops
-      { path: 'drops', ...stub('Drops', 4) },
-      { path: 'drops/:slug', ...stub('Drop', 4) },
-      { path: 'early-access', ...stub('Early access', 4) },
+      { path: 'drops', element: <DropsPage /> },
+      { path: 'drops/:slug', element: <DropDetailPage /> },
+      { path: 'early-access', element: <EarlyAccessPage /> },
 
       // Editorial
-      { path: 'articles', ...stub('Journal', 4) },
-      { path: 'articles/:slug', ...stub('Article', 4) },
+      { path: 'articles', element: <ArticlesPage /> },
+      // react-markdown pulls in a large parser tree most visitors never
+      // touch -- split out the same way /admin is.
+      { path: 'articles/:slug', lazy: () => import('@/features/articles/ArticleReader') },
 
       // Checkout. The cart is a drawer, not a route.
       { path: 'checkout', ...stub('Checkout', 5) },

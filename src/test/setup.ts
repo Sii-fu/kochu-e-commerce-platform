@@ -38,6 +38,13 @@ globalThis.ResizeObserver ??= class {
   disconnect() {}
 }
 
+// Used by ShopPage's infinite-scroll trigger.
+globalThis.IntersectionObserver ??= class {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+} as unknown as typeof IntersectionObserver
+
 // jsdom supplies AbortController, but `Request` is Node's (undici), and undici
 // brand-checks the signal against its OWN AbortSignal. react-router builds a
 // Request on every client-side navigation, so any test that navigates dies on
