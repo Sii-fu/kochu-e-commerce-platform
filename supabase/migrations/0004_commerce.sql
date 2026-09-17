@@ -48,9 +48,11 @@ create table orders (
   id           uuid primary key default gen_random_uuid(),
 
   -- Human-facing reference. Random suffix so order volume is not inferable.
+  -- extensions.gen_random_bytes: pgcrypto lives in the `extensions` schema on
+  -- the hosted project (see 0001), which is not on this role's search_path.
   order_number text not null unique
     default 'KCH-' || to_char(now(), 'YYMMDD') || '-' ||
-            upper(encode(gen_random_bytes(3), 'hex')),
+            upper(encode(extensions.gen_random_bytes(3), 'hex')),
 
   -- null user_id = guest order. Reachable only via get_order_by_token().
   user_id      uuid references auth.users(id) on delete set null,

@@ -5,9 +5,26 @@
 -- code, which let `app/admin/page.tsx` filter on a 'paid' status that
 -- `updateOrderStatus` did not accept. Enums make that unrepresentable.
 
-create extension if not exists pgcrypto;   -- gen_random_uuid, gen_random_bytes
-create extension if not exists citext;     -- case-insensitive email / codes
-create extension if not exists pg_trgm;    -- fuzzy instant search
+-- pgcrypto is pinned to the `extensions` schema explicitly, matching where
+-- hosted Supabase projects pre-install it (a bare local Postgres has no such
+-- pre-install, so this line is what actually creates it there). Because it
+-- already exists on the hosted project, `if not exists` is a no-op that
+-- leaves it wherever it already was -- so the schema only matters when this
+-- statement is the one doing the creating, but stating it explicitly keeps
+-- both environments identical rather than relying on that coincidence.
+-- `extensions` is not on every role's default search_path, which is why the
+-- one gen_random_bytes() call site in 0004_commerce.sql is schema-qualified.
+-- gen_random_uuid() needs no such qualification: it has been built into
+-- Postgres core (pg_catalog) since v13.
+--
+-- citext and pg_trgm are NOT pre-installed by Supabase, so they are left
+-- unqualified and land in `public` on both environments -- qualifying them
+-- would mean schema-qualifying every citext column and every gin_trgm_ops
+-- index for no benefit.
+create schema if not exists extensions;
+create extension if not exists pgcrypto schema extensions;
+create extension if not exists citext;
+create extension if not exists pg_trgm;
 
 create type user_role      as enum ('customer', 'admin');
 
