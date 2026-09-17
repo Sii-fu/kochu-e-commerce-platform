@@ -21,7 +21,8 @@ export function DropsPage() {
     )
   }
 
-  const hasAny = data && (data.live.length > 0 || data.upcoming.length > 0)
+  const hasAny =
+    data && (data.live.length > 0 || data.upcoming.length > 0 || data.ended.length > 0)
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
@@ -77,6 +78,33 @@ export function DropsPage() {
                       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-4">
                         <Countdown target={drop.starts_at} className="text-white" />
                       </div>
+                    </div>
+                    <h3 className="font-display mt-3 font-medium">{drop.title}</h3>
+                  </Link>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {data.ended.length > 0 && (
+            <section>
+              <h2 className="text-muted-foreground text-sm font-medium tracking-wide uppercase">
+                Past drops
+              </h2>
+              <div className="mt-3 grid gap-6 sm:grid-cols-2">
+                {data.ended.map((drop) => (
+                  <Link
+                    key={drop.id}
+                    to={`/drops/${drop.slug}`}
+                    className="group block opacity-70 transition-opacity hover:opacity-100"
+                  >
+                    <div className="bg-muted relative aspect-[16/10] overflow-hidden rounded-md">
+                      <ProductImage
+                        bucket="drops"
+                        path={drop.cover_image}
+                        alt={drop.title}
+                        className="h-full w-full grayscale transition-transform duration-300 group-hover:scale-105"
+                      />
                     </div>
                     <h3 className="font-display mt-3 font-medium">{drop.title}</h3>
                   </Link>

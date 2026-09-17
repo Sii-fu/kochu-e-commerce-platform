@@ -238,10 +238,15 @@ export async function getCollectionBySlug(slug: string) {
 /**
  * Drops the current visitor can see. RLS (`drops_select_published_or_admin`)
  * already restricts to published rows -- this just adds the "live now" vs
- * "upcoming" split the /drops page renders as two sections. An upcoming drop
- * is deliberately visible here (that's the countdown page); its *products*
- * stay invisible until the window opens, enforced separately by the products
- * RLS policy.
+ * "upcoming" vs "ended" split the /drops page renders as sections. An
+ * upcoming drop is deliberately visible here (that's the countdown page);
+ * its *products* stay invisible until the window opens, enforced separately
+ * by the products RLS policy.
+ *
+ * Three buckets, not two: a drop whose ends_at has passed fails "is it live"
+ * but is not upcoming either -- lumping it into "upcoming" would render a
+ * countdown to a start time already in the past, which Countdown clamps to
+ * "Live now" and shows for a drop that's actually over.
  */
 export async function getDrops() {
   const { data, error } = await supabase
@@ -252,13 +257,17 @@ export async function getDrops() {
   if (error) throw error
 
   const now = Date.now()
-  const isLive = (d: { starts_at: string; ends_at: string | null }) =>
-    new Date(d.starts_at).getTime() <= now &&
-    (!d.ends_at || new Date(d.ends_at).getTime() >= now)
+  const status = (d: { starts_at: string; ends_at: string | null }) => {
+    const started = new Date(d.starts_at).getTime() <= now
+    const ended = d.ends_at != null && new Date(d.ends_at).getTime() < now
+    if (ended) return 'ended'
+    return started ? 'live' : 'upcoming'
+  }
 
   return {
-    live: data.filter(isLive),
-    upcoming: data.filter((d) => !isLive(d)),
+    live: data.filter((d) => status(d) === 'live'),
+    upcoming: data.filter((d) => status(d) === 'upcoming'),
+    ended: data.filter((d) => status(d) === 'ended'),
   }
 }
 

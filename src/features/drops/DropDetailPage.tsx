@@ -13,6 +13,7 @@ import { Input } from '@/components/ui/input'
 import { Skeleton } from '@/components/ui/skeleton'
 import { NotFoundPage } from '@/components/common/NotFoundPage'
 import { ErrorState } from '@/components/common/ErrorState'
+import { cn } from '@/lib/utils'
 
 export function DropDetailPage() {
   const { slug } = useParams<{ slug: string }>()
@@ -66,7 +67,10 @@ export function DropDetailPage() {
 
   const now = Date.now()
   const startsAt = new Date(drop.starts_at).getTime()
-  const isLive = startsAt <= now && (!drop.ends_at || new Date(drop.ends_at).getTime() >= now)
+  const endsAt = drop.ends_at ? new Date(drop.ends_at).getTime() : null
+  const isEnded = endsAt != null && endsAt < now
+  const isLive = !isEnded && startsAt <= now
+  const isUpcoming = !isEnded && !isLive
 
   return (
     <div>
@@ -75,10 +79,10 @@ export function DropDetailPage() {
           bucket="drops"
           path={drop.cover_image}
           alt={drop.title}
-          className="h-full w-full"
+          className={cn('h-full w-full', isEnded && 'grayscale')}
           loading="eager"
         />
-        {!isLive && (
+        {isUpcoming && (
           <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-6">
             <Countdown
               target={drop.starts_at}
@@ -89,6 +93,11 @@ export function DropDetailPage() {
             />
           </div>
         )}
+        {isEnded && (
+          <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-6">
+            <p className="text-sm text-white/90">This drop has ended</p>
+          </div>
+        )}
       </div>
 
       <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
@@ -97,7 +106,7 @@ export function DropDetailPage() {
           <p className="text-muted-foreground mt-2 max-w-prose text-sm">{drop.description}</p>
         )}
 
-        {!isLive && drop.access_key && (
+        {isUpcoming && drop.access_key && (
           <div className="bg-card mt-6 max-w-md rounded-md border p-4">
             <h2 className="text-sm font-medium">Have an early access key?</h2>
             {!session ? (
@@ -135,11 +144,13 @@ export function DropDetailPage() {
             <ProductGrid products={[]} loading />
           ) : !products || products.length === 0 ? (
             <ErrorState
-              title={isLive ? 'Nothing here yet' : 'Not open yet'}
+              title={isEnded ? 'This drop has ended' : isLive ? 'Nothing here yet' : 'Not open yet'}
               description={
-                isLive
-                  ? 'Products for this drop are on their way.'
-                  : 'Pieces from this drop are hidden until the window opens, or you redeem an early access key above.'
+                isEnded
+                  ? 'These pieces are no longer available.'
+                  : isLive
+                    ? 'Products for this drop are on their way.'
+                    : 'Pieces from this drop are hidden until the window opens, or you redeem an early access key above.'
               }
             />
           ) : (
