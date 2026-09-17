@@ -1,8 +1,9 @@
 import { Link, NavLink } from 'react-router'
-import { Menu, Search, ShoppingBag, User } from 'lucide-react'
+import { Menu, Search, ShieldCheck, ShoppingBag, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useCart, selectItemCount } from '@/store/cart'
 import { useUi } from '@/store/ui'
+import { useProfile } from '@/hooks/useProfile'
 import { cn } from '@/lib/utils'
 import { MobileNav } from './MobileNav'
 import { NAV_LINKS } from './nav-links'
@@ -14,6 +15,11 @@ export function Header() {
   const setNavOpen = useUi((s) => s.setNavOpen)
   const setCartOpen = useUi((s) => s.setCartOpen)
   const setSearchOpen = useUi((s) => s.setSearchOpen)
+  // profiles.role, checked in the DB -- never an env allowlist or an email
+  // comparison. A customer simply never sees this link; the real gate is
+  // <RequireAdmin> plus is_admin() inside every admin RPC regardless.
+  const { profile } = useProfile()
+  const isAdmin = profile?.role === 'admin'
 
   return (
     <header className="bg-background/95 supports-[backdrop-filter]:bg-background/80 sticky top-0 z-40 border-b backdrop-blur">
@@ -61,6 +67,14 @@ export function Header() {
         >
           <Search className="size-5" />
         </Button>
+
+        {isAdmin && (
+          <Button variant="ghost" size="icon" className="tap-target hidden md:inline-flex" asChild>
+            <Link to="/admin" aria-label="Admin dashboard">
+              <ShieldCheck className="size-5" />
+            </Link>
+          </Button>
+        )}
 
         <Button variant="ghost" size="icon" className="tap-target" asChild>
           <Link to="/account" aria-label="Account">

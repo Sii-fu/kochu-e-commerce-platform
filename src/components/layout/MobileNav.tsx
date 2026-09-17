@@ -7,6 +7,7 @@ import {
 } from '@/components/ui/sheet'
 import { Separator } from '@/components/ui/separator'
 import { useUi } from '@/store/ui'
+import { useProfile } from '@/hooks/useProfile'
 import { NAV_LINKS } from './nav-links'
 
 const ACCOUNT_LINKS = [
@@ -22,6 +23,8 @@ const ACCOUNT_LINKS = [
 export function MobileNav() {
   const navOpen = useUi((s) => s.navOpen)
   const setNavOpen = useUi((s) => s.setNavOpen)
+  const { profile } = useProfile()
+  const isAdmin = profile?.role === 'admin'
 
   return (
     <Sheet open={navOpen} onOpenChange={setNavOpen}>
@@ -56,6 +59,16 @@ export function MobileNav() {
               {link.label}
             </Link>
           ))}
+
+          {isAdmin && (
+            <Link
+              to="/admin"
+              onClick={() => setNavOpen(false)}
+              className="text-muted-foreground hover:text-primary flex min-h-11 items-center text-sm transition-colors"
+            >
+              Admin dashboard
+            </Link>
+          )}
         </nav>
       </SheetContent>
     </Sheet>

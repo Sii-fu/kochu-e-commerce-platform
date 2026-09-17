@@ -1,8 +1,16 @@
 import '@testing-library/jest-dom/vitest'
 import { afterEach, vi } from 'vitest'
 import { cleanup } from '@testing-library/react'
+import { createSupabaseMock } from './mocks/supabase'
 
 afterEach(cleanup)
+
+// Every test gets a signed-out, network-free Supabase client by default.
+// Tests that need a signed-in session or specific query results override
+// individual methods with vi.mocked(supabase.<x>).mockResolvedValueOnce(...).
+vi.mock('@/lib/supabase/client', () => ({
+  supabase: createSupabaseMock(),
+}))
 
 // jsdom implements neither of these, and Radix's dismissable layers and
 // scroll-locking use both. Without them every dialog/sheet test throws.
